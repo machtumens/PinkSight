@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use PinkSight, please cite it using the metadata below."
+title: "PinkSight: multimodal DCE-MRI + clinical fusion for breast-cancer subtype characterisation and Ki-67 stratification at diagnosis"
+abstract: >-
+  PinkSight is a research artifact (OPSI 2026, not a clinical product) that
+  characterises breast-cancer subtype and stratifies the Ki-67 proliferation
+  index at diagnosis from DCE-MRI and clinical data with explainable
+  cross-attention fusion. Its headline finding is an honest null: on the Duke
+  cohort a clinical-only baseline carries the subtype signal and every imaging
+  and fusion rung sits below it, with the fusion-versus-clinical margin not
+  demonstrated at the available sample size. Every number is a within-cohort
+  result on its own patient-disjoint cohort.
+type: software
+authors:
+  - name: "Team TestEin"
+version: "0.0.0"
+date-released: "2026-08-19"
+license: Apache-2.0
+# Placeholder — Phase 6 (publish prep) fills the real URL once the GitHub remote exists.
+repository-code: "https://github.com/REPLACE-ME/pinksight"
+keywords:
+  - breast cancer
+  - subtype characterisation
+  - Ki-67
+  - DCE-MRI
+  - multimodal fusion
+  - explainability
+  - OPSI 2026

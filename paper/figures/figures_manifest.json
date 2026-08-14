@@ -1,0 +1,101 @@
+[
+  {
+    "id": "fig2",
+    "title": "Cohort flow / N-waterfall (Track A + external + Track B)",
+    "files": [
+      "reports/paper/figures/fig2_consort_waterfall.png",
+      "reports/paper/figures/fig2_consort_waterfall.svg"
+    ],
+    "sources": [
+      "DATA_CARD.md"
+    ],
+    "caption": "Duke 922 \u2192 759 in-scope (luminal-like 595 vs TNBC 164) \u2192 dev N=624/613; classes are luminal-like (A+B) vs TNBC, Luminal A undetermined (Ki-67 N=0). Sealed external pool 1215 (ISPY2 set N=739, Duke\u2229external=0). Track B TCGA-BRCA N=640, reported alongside, never juxtaposed with Duke.",
+    "n_duke_scope": 759,
+    "n_dev": 624
+  },
+  {
+    "id": "fig3",
+    "title": "Ablation ladder \u2014 subtype characterisation (Duke, headline)",
+    "files": [
+      "reports/paper/figures/fig3_ablation_ladder.png",
+      "reports/paper/figures/fig3_ablation_ladder.svg"
+    ],
+    "sources": [
+      "reports/G3_fusion_arch_bundle/ablation_table.json",
+      "reports/G3_fusion_arch_bundle/paired_vs_anchor_delong.json",
+      "reports/G3_fusion_arch_bundle/moe7_corrected_reporting.json"
+    ],
+    "caption": "Every imaging-involving rung falls below the clinical-alone anchor (LogReg, 0.708). Paired DeLong vs the 0.708 anchor: #4 \u0394\u22120.130, #7 \u0394\u22120.075 (both p<0.001); flat-fusion vs estimator-matched clinical \u0394\u22120.0026, p=0.98 (+0.03 not demonstrated). MoE #7 is a 20-salt distribution 0.650\u00b10.018 (all < 0.708). A characterised information ceiling.",
+    "n": 613,
+    "seeds": 3
+  },
+  {
+    "id": "fig5",
+    "title": "Calibration reliability \u2014 internal vs quasi-external",
+    "files": [
+      "reports/paper/figures/fig5_reliability.png",
+      "reports/paper/figures/fig5_reliability.svg"
+    ],
+    "sources": [
+      "reports/G5_calibration/metrics.json"
+    ],
+    "caption": "Internal Duke clinical model is well-calibrated (ECE 0.0196); the external ISPY2 ECE (0.39) reflects a 48% vs 21% TNBC prevalence shift, not leakage. Temperature scaling fit on Duke OOF only.",
+    "temperature": 1.0953
+  },
+  {
+    "id": "fig6",
+    "title": "Quasi-external validation on ISPY2",
+    "files": [
+      "reports/paper/figures/fig6_external_validation.png",
+      "reports/paper/figures/fig6_external_validation.svg"
+    ],
+    "sources": [
+      "reports/G5_external/metrics.json"
+    ],
+    "caption": "ISPY2 external AUROC 0.5725 [0.531, 0.614] vs internal 0.719; honest drop \u0394=0.147. Real-but-weak (CI lower bound > 0.50); shuffle sentinel at chance confirms leakage-clean.",
+    "n_external": 739
+  },
+  {
+    "id": "fig7",
+    "title": "XAI faithfulness on the null encoder",
+    "files": [
+      "reports/paper/figures/fig7_xai_metrics.png",
+      "reports/paper/figures/fig7_xai_metrics.svg"
+    ],
+    "sources": [
+      "reports/G5_xai/metrics.json"
+    ],
+    "caption": "IoU 0.123\u00b10.035 (< 0.30 gate on all 3 seeds), pointing 0.635, counterfactual-flip 0.212; model-randomization sanity PASS \u00d73. On a leak-free null encoder (AUROC 0.5008), low IoU is the expected corroboration of the Duke imaging\u2192subtype ceiling.",
+    "n": 613,
+    "seeds": 3
+  },
+  {
+    "id": "fig8",
+    "title": "Track B histology (firewalled, own axes)",
+    "files": [
+      "reports/paper/figures/fig8_trackb_histology.png",
+      "reports/paper/figures/fig8_trackb_histology.svg"
+    ],
+    "sources": [
+      "reports/novel_heads/arm3_histology_morphology/metrics_20260728.json",
+      "reports/trackb/mil_cv_uni.json"
+    ],
+    "caption": "TITAN+LogReg 0.9646 [0.943,0.986] (ADR-0015 co-headline) + UNI2-h/ABMIL 0.9675 [0.948,0.987] (ADR-0012 confirmation, same 640-patient cohort, different encoder -> encoder-robustness, NOT independent corroboration). 3 seeds. Reported alongside Track A, never juxtaposed with the Duke null.",
+    "n": 640,
+    "seeds": 3
+  },
+  {
+    "id": "figA",
+    "title": "pCR pilot (ISPY2/MAMA-MIA)",
+    "files": [
+      "reports/paper/figures/fig_pcr_pilot.png",
+      "reports/paper/figures/fig_pcr_pilot.svg"
+    ],
+    "sources": [
+      "reports/pcr_pilot/metrics_floor.json",
+      "reports/pcr_pilot/metrics_cnn.json"
+    ],
+    "caption": "Phase D radiomics floor 0.599 [0.561, 0.637] (NO-GO vs 0.65); Phase E 3D-CNN 0.4874 genuine null (NO-GO vs 0.62). Independent pilot on a distinct cohort \u2014 no cross-cohort ceiling claim.",
+    "n": 980
+  }
+]

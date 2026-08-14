@@ -1,0 +1,44 @@
+# Track-B embedding entrypoint — Wave-3 PATH-VERIFICATION GATE (plan SUPPLEMENT Gap 1).
+#
+# Wave 3 arms (3, 5, 7) reuse the dormant Track-B CLAM/UNI embedding infrastructure. The real
+# entrypoint path is NOT assumed. Every `scripts/novel_heads/arm{3,5,7}_*.py` MUST import the
+# embedding entrypoint from the path recorded here — NEVER from a hardcoded string.
+#
+# VERIFIED 2026-07-28 (Wave 3 Phase 0c/0d, CPU-only execute session). Confirmed live:
+#   from pinksight.trackb.gate import TRACKB_GATE_OPEN, assert_gate_open
+#   from pinksight.trackb.tiles import load_tile_encoder
+#   -> TRACKB_GATE_OPEN = True ; assert_gate_open() did not raise ; load_tile_encoder callable
+# The plan-time note that `scripts/trackb/embed_tcga.py` does not exist is confirmed and stands;
+# the real surface is src/pinksight/trackb/tiles.py.
+#
+# LOCK-6 / gate state: the Track B gate is OPEN, ratified by Richard (LAW L-1) 2026-07-11 per
+# decisions.md [TRACKB-GATE-OPEN]. No bypass ADR is required. NOTE: the module docstring at the top
+# of src/pinksight/trackb/gate.py still describes the gate as closed — that text is stale and is
+# owned by a separate task; the constant (TRACKB_GATE_OPEN = True) is authoritative.
+
+schema: pinksight.novel-heads/trackb-entrypoint-v1
+role: wave3-embedding-entrypoint-verification
+gated_behind: wave1_or_wave2_greenlight
+verified: true
+verified_date: 2026-07-28
+verified_by: wave3 phase 0c/0d (CPU-only execute session)
+
+# --- Verified entrypoint ---------------------------------------------------------------------------
+entrypoint_path: src/pinksight/trackb/tiles.py
+entrypoint_symbol: load_tile_encoder
+real_data_kwarg: "synthetic=False"          # real (non-synthetic) embeddings; permitted, gate is OPEN
+
+# --- Gate surface (checked before any embedding call) ----------------------------------------------
+gate_module: src/pinksight/trackb/gate.py
+gate_symbol: assert_gate_open
+gate_state: open
+gate_ratified: 2026-07-11
+gate_authority: "decisions.md [TRACKB-GATE-OPEN] — Richard, LAW L-1"
+
+search_locations:                           # retained for provenance
+  - src/pinksight/trackb/
+  - scripts/trackb_*.py
+notes: >
+  Confirmed at plan-write time and re-confirmed 2026-07-28: scripts/trackb/embed_tcga.py is NOT
+  present on disk. Arms 3/5/7 read entrypoint_path from this file — hardcoding a Track-B path is a
+  contract violation. GPU embedding passes (Phases 6-8) remain OUT OF SCOPE until Gate 2 is granted.

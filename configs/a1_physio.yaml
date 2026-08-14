@@ -1,0 +1,36 @@
+# A1 — semi-quantitative DCE physiology encoder training config.
+#
+# Two arms trained on the identical StratifiedGroupKFold(5) + seeds:
+#   Arm A (raw-MRI-Eye baseline): frozen MRI embeddings -> LogReg probe.
+#   Arm B (physiology encoder):   7 semi-quant DCE features -> PhysioEncoder -> LogReg probe.
+# Kill-gate A1-KG-001: Arm B must beat Arm A by ΔAUC>0 with DeLong LB of ΔAUC>0, pooled-OOF only.
+#
+# Ledger (LOCK-1): "semi-quantitative DCE enhancement" features ONLY — never Ktrans/kep/ve.
+
+features_path: data/processed/semiquant_features.npz   # A1-3 cache (pids, features [N,7], feature_names)
+embeddings_dir: reports/G2_imaging/embeddings           # Arm A frozen MRI embeddings: mri_embed_s{seed}.npz
+clin_embed_dir: reports/G2_imaging/embeddings           # clinical embeddings for the A1-8 FVA 3-modality set
+manifest: data/manifest_v1.csv                          # patient list + subtype labels
+split_yaml: configs/split_v2.yaml                       # patient-level frozen split (LOCK-2)
+
+seeds: [0, 1, 2]        # 3-seed spread (target 5 if time allows)
+n_splits: 5             # StratifiedGroupKFold folds
+
+encoder_arch:
+  hidden: 64            # PhysioEncoder hidden width (plan A1-5)
+  out: 512              # bus dim = MriEncoder.EMBED_DIM (E2 confirmed 512)
+
+probe_C: 1.0           # LogisticRegression(C=1.0) probe on both arms (pre-reg locked estimator)
+
+# Kill-gate thresholds (A1-KG-001, pre-registered — evaluated, never tuned)
+kill_gate:
+  delta_auc_min: 0.0          # ΔAUC (Arm B - Arm A) must be strictly > 0
+  delong_lb_min: 0.0          # DeLong 95% LB of ΔAUC must be strictly > 0
+  n_bootstrap: 1000           # bootstrap draws for the ΔAUC CI
+  shuffle_tol: 0.03           # shuffle sentinel: each arm shuffled-label AUROC within 0.5 ± 0.03
+
+# Cheap-first smoke (A1-9) — must pass before any full / GPU run (LOCK-5)
+smoke:
+  n_patients: 100
+  n_splits: 2
+  seeds: [0]

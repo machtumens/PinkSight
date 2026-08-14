@@ -1,0 +1,29 @@
+# ISPY1 / ACRIN-6657 quasi-external HOLDOUT contract (pCR pilot, Phase A7).
+#
+# LOCK-2 / plan Public Contracts: this is the canonical machine-readable list of ISPY1 holdout
+# patient IDs. ANY code that reads ISPY1 data MUST exclude every ID listed here from every ISPY2
+# training/CV fold. The ISPY1 cohort is the honesty-pass external holdout — carved FIRST, before any
+# ISPY2 model training (plan acceptance criterion 3). It is used to REPORT the internal→external drop
+# (Δ), NOT to claim cross-institution generalisation (claim-ledger LOCK-1 / plan FORBIDDEN framing).
+#
+# STATUS: DRY STUB (populated: false). The patient_ids list is EMPTY because the ISPY1 label TSV has
+# not been downloaded yet (Phase A2 is gated behind the 84GB download + Phase B4 pre-reg approval).
+# Phase A2 populates patient_ids from data/ispy1/labels.tsv and flips populated -> true.
+# The file is well-formed YAML now so the C-A7 existence/parse gate is satisfied on the dry surface.
+
+schema: pinksight.holdout/ispy1-v1
+role: quasi-external-holdout      # honesty pass — report the drop, never a generalisation claim
+dataset: ISPY1 / ACRIN-6657
+source: TCIA "ISPY1", public
+expected_n: 222                   # plan dataset table; VERIFY on-disk at Phase A4 (A4 asserts N=222)
+carved_before_ispy2_training: true
+
+populated: false                  # flips true at Phase A2 once patient_ids are loaded from the TSV
+patient_ids: []                   # Phase A2: one ISPY1 patient_id per list entry
+
+# Leakage guard (enforced by scripts/pcr_dedup_ispy.py + Phase F1):
+#   - assert 0 overlap ISPY2 ∩ ISPY1 (this list) before any ISPY2 CV fold is built;
+#   - assert no ISPY1 patient_id in this list appears in any ISPY2 training fold at Phase F1.
+leakage_rule: >-
+  Every patient_id in this file is EXCLUDED from all ISPY2 training/CV folds. Populated at A2;
+  enforced at A5 (dedup) and F1 (external inference). Empty while populated=false.

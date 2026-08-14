@@ -1,0 +1,43 @@
+# Arm 8 (Wave 1, PILOT-POWER) — proteogenomic-discordance organ (CPTAC-BRCA, N=122).
+#
+# Ledger (LOCK-1/LOCK-2): post-transcriptional regulation burden CHARACTERISATION at diagnosis
+# (pilot, N=122). Protein abundance of ER/PR/HER2 held out of inputs (label surrogate). POWER HONESTY
+# MANDATORY — every result carries "PILOT N=122 — underpowered, hypothesis-generating only"; NO
+# headline number; never a generalisation claim. CPTAC ∩ Duke = 0 (log explicitly).
+#
+# STATUS: POPULATED (populated: true; staged 2026-07-25). CPTAC-BRCA is staged on demand via the
+# public `cptac` package (Payne lab, PNNL) → matched RNA (washu transcriptomics) + protein (umich
+# proteomics), cached under data/genomics/cptac_brca/. Matched RNA+protein N=121 (confirms the plan's
+# N≈122 pilot-power note). The floor-gate script (arm8_proteogenomic_discordance.py) stages via
+# cptac.Brca(); a network/package failure exits BLOCKED (never a fabricated number).
+
+schema: pinksight.novel-heads/arm8-v1
+arm: 8
+wave: 1
+role: proteogenomic-discordance-characterisation   # at-diagnosis pilot; standalone organ
+compute: cpu-zero-dollar
+model: correlation_then_lightgbm            # discordance-score correlation (floor); LightGBM on GREENLIGHT
+populated: true                             # staged via cptac package; N=121 matched RNA+protein
+pilot_power: true                           # N≈122 — underpowered; hypothesis-generating only
+
+# --- Dataset (staged via the `cptac` package; cached parquet under data/genomics/cptac_brca/) -------
+# The script pulls these on demand — no committed data (gitignored under /data/). Source rows below
+# document the cptac calls the script issues; they are not file paths to a committed CSV.
+datasets:
+  cptac_brca_proteomics: "cptac.Brca().get_proteomics('umich')"        # protein quant (PDC000173)
+  cptac_brca_mrna: "cptac.Brca().get_transcriptomics('washu')"         # matched RNA (log2)
+  cache_dir: data/genomics/cptac_brca/                                  # CSV cache (gitignored)
+
+# --- Target ----------------------------------------------------------------------------------------
+target: discordance_burden                  # per-patient mRNA/protein discordance magnitude vs PAM50 centroid distance
+
+# --- Thresholds (plan Wave 1 arm 8 spec — Pearson r, bootstrap CI; regression is the floor) --------
+seeds: [0, 1, 2]
+bootstrap_n: 1000                           # bootstrap CI for the small-N pilot
+kill_threshold_pearson_r_abs: 0.10          # |r| <= 0.10, CI overlaps 0.0 -> null pilot report
+greenlight_threshold_pearson_r_abs: 0.25    # |r| >= 0.25, bootstrap CI LB > 0.05 -> supervised arm w/ power caveat
+greenlight_bootstrap_ci_lb: 0.05
+
+ledger_guard: >
+  post-transcriptional regulation burden characterisation at diagnosis (pilot, N=122).
+  Never a generalisation claim from N=122.

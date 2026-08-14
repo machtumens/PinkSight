@@ -1,0 +1,49 @@
+# Arm 10 (Wave 1) — plasma-metabolomic subtype-concordance companion (novel heads, OPSI 2026).
+#
+# Ledger (LOCK-1/LOCK-2): "independent-modality subtype concordance at diagnosis." Never a screening /
+# early-detection tool. Calibration fit on the TRAIN split ONLY; row-expansion for aggregated studies
+# FORBIDDEN (use sample_weight, not row duplication — Track-C in-sample-leak lesson, ADR-0010). ONE
+# platform per run (never merge GC-MS/LC-MS/NMR). Small-N: companion / hypothesis-generating only.
+#
+# LABEL-VERIFICATION GATE (checklist 10a — BLOCKING before any arm 10 training code): confirm the
+# chosen MW study carries LumA/TNBC labels OR ER+/ER- stratification; if absent, pick a substitute or
+# mark arm 10 BLOCKED. This is a Wave 1 execution blocker, not part of the scaffolding slice.
+#
+# STATUS: DRY STUB (populated: false).
+
+schema: pinksight.novel-heads/arm10-v1
+arm: 10
+wave: 1
+role: independent-modality-concordance-characterisation   # at-diagnosis; companion only
+compute: cpu-zero-dollar
+model: lightgbm                             # normalised metabolite intensities (single platform) -> LightGBM
+populated: false
+
+# --- Dataset (placeholder — Metabolomics Workbench; verify subtype labels at execute time) ---------
+datasets:
+  mw_study_id: ST000356                      # or substitute — VERIFY LumA/TNBC or ER+/ER- labels (10a)
+  mw_data_root: TBD/metabolomics_workbench/ST000356
+platform: single                            # ONE of {GC-MS, LC-MS, NMR} — never merged (batch effects)
+
+# --- Label-verification gate (checklist 10a — BLOCKING) --------------------------------------------
+label_verification:
+  required: true
+  accepted_labels: [luminal_a_vs_tnbc, er_pos_vs_er_neg]   # ER+/ER- is the documented fallback
+  study_url: https://www.metabolomicsworkbench.org/data/DRCCStudySummary.php?Mode=SetupStudyData&StudyID=ST000356
+  on_missing: block_or_substitute            # if no labelled study -> mark arm 10 BLOCKED in Wave 1 summary
+
+# --- Target ----------------------------------------------------------------------------------------
+target: subtype_concordance                 # binary: does the metabolomic cluster align with molecular subtype?
+
+# --- Thresholds (plan Wave 1 arm 10 spec) ----------------------------------------------------------
+seeds: [0, 1, 2]
+kill_threshold_auroc: 0.52                  # AUROC <= 0.52 -> null companion report
+greenlight_threshold_auroc: 0.60            # AUROC >= 0.60 AND DeLong CI LB >= 0.50 -> ECE + SHAP
+greenlight_delong_ci_lb: 0.50
+
+# --- Calibration discipline (Track-C leak lesson, ADR-0010) ----------------------------------------
+calibration_fit_on: train_only              # NEVER fit on val/test
+row_expansion: forbidden                    # use sample_weight for aggregated data, not row duplication
+
+ledger_guard: >
+  independent-modality subtype concordance at diagnosis. Never a screening or early-detection tool.

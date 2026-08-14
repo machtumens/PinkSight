@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PinkSight — Characterisation Workstation (design playground)</title>
+<!--
+  ┌──────────────────────────────────────────────────────────────────────────────────────────┐
+  │ PinkSight desktop workstation — SINGLE-FILE DESIGN PLAYGROUND (v2, "precision instrument").  │
+  │                                                                                            │
+  │ Self-contained visual mock of the real React/Tauri app (desktop/src). All values are MOCK — │
+  │ nothing here talks to the Python sidecar. Redesign freely, then re-wire it back into the     │
+  │ real app using the "Wiring Spec" screen (last nav item) + the data-wire="…" annotations.     │
+  │                                                                                            │
+  │ CLAIM LEDGER (never violate): characterisation / localisation ONLY. Forbidden framing:       │
+  │ "early detection", "growth rate", "kinetics", "doubling time", "screening", "cross-  # allow-ledger │
+  │ institution". The dispatch picker is routing-only (never a per-organ number, never a Run     │
+  │ button). Every payload is tagged MOCK or SYNTHETIC — never a bare number shown as real.      │
+  │ Design direction: dark-luxury precision instrument · rose = the single interactive signal.  │
+  └──────────────────────────────────────────────────────────────────────────────────────────┘
+-->
+<style>
+  /* ════ Tokens ═══════════════════════════════════════════════════════════════════════════════
+     Light = "daylight lab", Dark (default) = "precision instrument". Rose is the ONLY interactive
+     signal; every other hue carries semantic meaning (trust, calibration, modality provenance). */
+  :root {
+    --bg: 210 30% 97%; --bg-2: 213 28% 94%; --panel: 0 0% 100%;
+    --surface: 0 0% 100%; --surface-2: 214 28% 96%; --inset: 214 26% 93%;
+    --fg: 216 34% 15%; --fg-dim: 216 14% 42%; --fg-faint: 216 12% 56%;
+    --border: 214 22% 87%; --border-strong: 214 22% 78%;
+    --primary: 336 66% 47%; --primary-fg: 0 0% 100%; --primary-soft: 336 66% 47%;
+    --uncertain: 38 92% 45%; --abstain: 215 14% 50%;
+    --good: 152 55% 36%; --warn: 38 92% 45%; --bad: 4 70% 48%;
+    --mod-mri: 210 85% 50%; --mod-clinical: 176 62% 34%; --mod-path: 268 52% 54%; --mod-genomic: 292 50% 50%;
+    --radius: 14px; --radius-sm: 9px;
+    --shadow: 0 1px 2px hsl(216 40% 20% / .06), 0 8px 24px -10px hsl(216 40% 20% / .12);
+    --shadow-lg: 0 2px 4px hsl(216 40% 20% / .06), 0 24px 48px -18px hsl(216 40% 20% / .22);
+    --glow: 0 0 0 1px hsl(var(--primary) / .18), 0 8px 30px -8px hsl(var(--primary) / .35);
+    --grid-line: 216 30% 50%;
+  }
+  :root[data-theme="dark"] {
+    --bg: 222 32% 6%; --bg-2: 222 30% 8%; --panel: 222 28% 9%;
+    --surface: 220 26% 12%; --surface-2: 220 24% 15%; --inset: 222 30% 8%;
+    --fg: 210 26% 95%; --fg-dim: 214 14% 66%; --fg-faint: 216 12% 46%;
+    --border: 216 22% 18%; --border-strong: 216 22% 26%;
+    --primary: 336 78% 60%; --primary-fg: 222 32% 6%; --primary-soft: 336 70% 66%;
+    --uncertain: 38 92% 58%; --abstain: 215 14% 60%;
+    --good: 152 52% 50%; --warn: 38 92% 58%; --bad: 4 76% 62%;
+    --mod-mri: 210 84% 64%; --mod-clinical: 176 58% 50%; --mod-path: 268 58% 68%; --mod-genomic: 292 54% 64%;
+    --shadow: 0 1px 2px hsl(0 0% 0% / .3), 0 10px 30px -12px hsl(0 0% 0% / .6);
+    --shadow-lg: 0 2px 6px hsl(0 0% 0% / .4), 0 30px 60px -20px hsl(0 0% 0% / .75);
+    --glow: 0 0 0 1px hsl(var(--primary) / .3), 0 10px 40px -8px hsl(var(--primary) / .45);
+    --grid-line: 210 40% 70%;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: hsl(var(--bg)); color: hsl(var(--fg));
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; font-size: 14px; line-height: 1.5; letter-spacing: -0.005em;
+  }
+  /* Atmosphere: faint rose aurora top-left + a whisper of depth. Never loud. */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(600px 400px at 16% -6%, hsl(var(--primary) / .10), transparent 60%),
+      radial-gradient(700px 500px at 100% 0%, hsl(210 60% 40% / .06), transparent 55%);
+  }
+  .tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; cursor: pointer; color: inherit; }
+  ::selection { background: hsl(var(--primary) / .3); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border-strong)); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+
+  /* ════ Shell ════════════════════════════════════════════════════════════════════════════════ */
+  .app { position: relative; z-index: 1; display: grid; grid-template-columns: 244px 1fr; height: 100vh; }
+  .sidebar {
+    display: flex; flex-direction: column; gap: 3px; padding: 20px 14px;
+    background: linear-gradient(180deg, hsl(var(--panel)), hsl(var(--bg-2)));
+    border-right: 1px solid hsl(var(--border));
+  }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 20px; }
+  .brand .mark {
+    width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 18px;
+    background: radial-gradient(120% 120% at 30% 20%, hsl(var(--primary-soft)), hsl(336 70% 40%));
+    color: #fff; box-shadow: var(--glow); position: relative;
+  }
+  .brand .name { font-weight: 680; font-size: 16px; letter-spacing: -0.02em; }
+  .brand .sub { font-size: 8.5px; letter-spacing: 0.16em; color: hsl(var(--fg-faint)); font-weight: 600; }
+  .nav-group { font-size: 9.5px; letter-spacing: 0.12em; font-weight: 700; color: hsl(var(--fg-faint));
+               padding: 12px 12px 6px; text-transform: uppercase; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 10px;
+    color: hsl(var(--fg-dim)); font-weight: 550; font-size: 13.5px;
+    transition: background .18s, color .18s, box-shadow .18s; position: relative;
+  }
+  .nav-item .ico { width: 17px; text-align: center; opacity: .85; font-size: 14px; }
+  .nav-item:hover { background: hsl(var(--surface-2) / .7); color: hsl(var(--fg)); }
+  .nav-item.active { background: hsl(var(--primary) / .13); color: hsl(var(--primary-soft));
+                     box-shadow: inset 0 0 0 1px hsl(var(--primary) / .22); font-weight: 620; }
+  .nav-item.active::before { content: ""; position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: hsl(var(--primary)); box-shadow: 0 0 12px hsl(var(--primary)); }
+  .motto { margin-top: auto; padding: 14px 12px 4px; font-size: 10px; color: hsl(var(--fg-faint)); letter-spacing: .01em;
+           border-top: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 7px; }
+  .motto b { color: hsl(var(--fg-dim)); font-weight: 600; }
+
+  .main { overflow-y: auto; position: relative; }
+  .screen { display: none; }
+  .screen.active { display: block; animation: rise .35s cubic-bezier(.16,1,.3,1); }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .pad { padding: 30px 34px; max-width: 1180px; }
+  .page-head { margin-bottom: 22px; }
+  .page-head h1 { font-size: 25px; font-weight: 680; letter-spacing: -0.025em; }
+  .page-head p { color: hsl(var(--fg-dim)); font-size: 13px; margin-top: 4px; }
+  .eyebrow { font-size: 10.5px; letter-spacing: .14em; font-weight: 700; text-transform: uppercase;
+             color: hsl(var(--primary-soft)); margin-bottom: 8px; }
+
+  /* ════ Primitives ═══════════════════════════════════════════════════════════════════════════ */
+  .card {
+    background: linear-gradient(180deg, hsl(var(--surface)), hsl(var(--surface) / .6));
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+    transition: border-color .2s, transform .2s, box-shadow .2s;
+  }
+  .card.hover:hover { border-color: hsl(var(--border-strong)); transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .card h3 { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+             color: hsl(var(--fg-faint)); margin-bottom: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .dim { color: hsl(var(--fg-dim)); } .faint { color: hsl(var(--fg-faint)); }
+  .xs { font-size: 12px; } .tiny { font-size: 10.5px; } .stack > * + * { margin-top: 9px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 600; background: hsl(var(--inset)); color: hsl(var(--fg-dim));
+    box-shadow: inset 0 0 0 1px hsl(var(--border)); }
+  .badge.good { background: hsl(var(--good) / .15); color: hsl(var(--good)); box-shadow: inset 0 0 0 1px hsl(var(--good) / .3); }
+  .badge.warn { background: hsl(var(--warn) / .15); color: hsl(var(--warn)); box-shadow: inset 0 0 0 1px hsl(var(--warn) / .3); }
+  .badge.bad  { background: hsl(var(--bad) / .15);  color: hsl(var(--bad));  box-shadow: inset 0 0 0 1px hsl(var(--bad) / .3); }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; box-shadow: 0 0 8px currentColor; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 15px; border-radius: 10px; font-weight: 620; font-size: 13px;
+    background: linear-gradient(180deg, hsl(var(--primary-soft)), hsl(var(--primary))); color: hsl(var(--primary-fg));
+    border: 1px solid hsl(var(--primary) / .5); box-shadow: var(--glow); transition: filter .16s, transform .1s; }
+  .btn:hover { filter: brightness(1.08); } .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.3); box-shadow: none; }
+  .btn.outline { background: hsl(var(--surface-2) / .5); color: hsl(var(--fg)); border-color: hsl(var(--border-strong)); box-shadow: none; }
+  .btn.outline:hover { background: hsl(var(--surface-2)); border-color: hsl(var(--fg-faint)); }
+  .btn.ghost { background: transparent; color: hsl(var(--fg-dim)); border-color: transparent; box-shadow: none; }
+  .btn.ghost:hover { background: hsl(var(--surface-2) / .6); color: hsl(var(--fg)); }
+  .btn.sm { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
+
+  select { background: hsl(var(--inset)); color: hsl(var(--fg)); border: 1px solid hsl(var(--border-strong));
+    border-radius: 9px; padding: 9px 11px; font: inherit; width: 100%; transition: border-color .15s, box-shadow .15s; }
+  select:focus { outline: none; border-color: hsl(var(--primary) / .6); box-shadow: 0 0 0 3px hsl(var(--primary) / .15); }
+  input[type="range"] { width: 100%; accent-color: hsl(var(--primary)); }
+  input[type="checkbox"] { accent-color: hsl(var(--primary)); width: 14px; height: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 700; color: hsl(var(--fg-faint)); font-size: 10.5px; letter-spacing: .06em;
+       text-transform: uppercase; padding: 11px 14px; border-bottom: 1px solid hsl(var(--border)); }
+  td { padding: 12px 14px; border-bottom: 1px solid hsl(var(--border) / .5); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tr.clickable { transition: background .12s; } tr.clickable:hover { background: hsl(var(--primary) / .07); cursor: pointer; }
+
+  /* ── Uncertainty bar (the trust primitive) ── */
+  .ubar { padding: 7px 0; }
+  .ubar .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; margin-bottom: 7px; }
+  .ubar .track { position: relative; height: 9px; border-radius: 999px; background: hsl(var(--inset)); box-shadow: inset 0 0 0 1px hsl(var(--border)); }
+  .ubar .band { position: absolute; height: 9px; border-radius: 999px;
+    background: linear-gradient(90deg, hsl(var(--uncertain) / .25), hsl(var(--uncertain) / .5)); }
+  .ubar .pt { position: absolute; top: 50%; height: 15px; width: 2.5px; border-radius: 2px;
+    background: hsl(var(--fg)); transform: translate(-50%, -50%); box-shadow: 0 0 8px hsl(var(--fg) / .5); }
+
+  /* ── Modality fusion bars (diverging, signed) ── */
+  .mbar { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 4px 0; }
+  .mbar .swatch { width: 10px; height: 10px; border-radius: 999px; flex: none; box-shadow: 0 0 8px currentColor; }
+  .mbar .mname { width: 68px; flex: none; text-transform: capitalize; }
+  .mbar .mtrack { position: relative; height: 14px; flex: 1; border-radius: 5px; background: hsl(var(--inset)); box-shadow: inset 0 0 0 1px hsl(var(--border)); overflow: hidden; }
+  .mbar .mid { position: absolute; inset: 0 auto 0 50%; width: 1px; background: hsl(var(--border-strong)); z-index: 1; }
+  .mbar .fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; transition: width .6s cubic-bezier(.16,1,.3,1); }
+  .mbar .fill.pos { left: 50%; background: linear-gradient(90deg, hsl(var(--good) / .7), hsl(var(--good))); }
+  .mbar .fill.neg { right: 50%; background: linear-gradient(270deg, hsl(var(--bad) / .7), hsl(var(--bad))); }
+  .mbar .mval { width: 60px; flex: none; text-align: right; font-weight: 640; }
+  .swatch.mri { background: hsl(var(--mod-mri)); color: hsl(var(--mod-mri)); }
+  .swatch.clinical { background: hsl(var(--mod-clinical)); color: hsl(var(--mod-clinical)); }
+  .swatch.path { background: hsl(var(--mod-path)); color: hsl(var(--mod-path)); }
+  .swatch.genomic { background: hsl(var(--mod-genomic)); color: hsl(var(--mod-genomic)); }
+  .absent { opacity: .3; box-shadow: none !important; }
+
+  /* ── Calibration meter ── */
+  .cmeter .track { position: relative; height: 9px; border-radius: 999px; background: hsl(var(--inset)); box-shadow: inset 0 0 0 1px hsl(var(--border)); }
+  .cmeter .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+  .cmeter .tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: hsl(var(--fg) / .35); }
+  .cmeter .scale { display: flex; justify-content: space-between; font-size: 10px; margin-top: 6px; color: hsl(var(--fg-faint)); }
+
+  /* ── Bento ── */
+  .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .bento .hero { grid-column: span 2; grid-row: span 2; }
+  .bento .wide { grid-column: 1 / -1; }
+  .metric-hero { display: flex; flex-direction: column; height: 100%; }
+  .metric-hero .big { font-size: 46px; font-weight: 720; letter-spacing: -0.03em; line-height: 1; margin-top: 6px; }
+  .metric-hero .cmp { display: flex; gap: 20px; margin-top: 18px; }
+  .metric-hero .cmp .k { font-size: 11px; color: hsl(var(--fg-faint)); text-transform: uppercase; letter-spacing: .06em; }
+  .metric-hero .cmp .v { font-size: 20px; font-weight: 680; }
+  .gapbar { height: 6px; border-radius: 99px; background: hsl(var(--inset)); margin-top: 16px; position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px hsl(var(--border)); }
+  .gapbar i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; display: block; }
+
+  /* ── Study viewport (instrument HUD) ── */
+  .viewer { display: grid; grid-template-columns: 1fr 396px; height: 100vh; }
+  .viewport { position: relative; display: flex; flex-direction: column; background: radial-gradient(120% 90% at 50% 30%, #0b0f18, #04060b); }
+  .viewport .topbar { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px;
+    color: rgba(255,255,255,.85); font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.07); background: rgba(0,0,0,.2); z-index: 3; }
+  .canvas-wrap { position: relative; flex: 1; display: grid; place-items: center; padding: 24px; overflow: hidden; }
+  /* faint dot-grid backdrop for the "acquisition" feel */
+  .canvas-wrap::before { content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(hsl(var(--grid-line) / .10) 1px, transparent 1px); background-size: 22px 22px; }
+  .canvas-wrap canvas { position: relative; max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 20px 60px -20px #000; }
+  /* scanline + vignette */
+  .scan { position: absolute; inset: 0; pointer-events: none; border-radius: 8px;
+    background: linear-gradient(rgba(255,255,255,.05), transparent 3px); background-size: 100% 4px; opacity: .35; mix-blend-mode: overlay; }
+  .vignette { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px 20px rgba(0,0,0,.6); }
+  .hud { position: absolute; color: rgba(255,255,255,.55); font-size: 10.5px; letter-spacing: .04em; z-index: 2; }
+  .hud.tl { top: 34px; left: 34px; } .hud.tr { top: 34px; right: 34px; text-align: right; }
+  .hud.bl { bottom: 66px; left: 34px; } .hud .k { color: rgba(255,255,255,.35); }
+  .orient { position: absolute; color: rgba(255,255,255,.4); font-weight: 700; font-size: 12px; z-index: 2; }
+  .orient.n { top: 30px; left: 50%; transform: translateX(-50%); } .orient.s { bottom: 62px; left: 50%; transform: translateX(-50%); }
+  .corner { position: absolute; width: 20px; height: 20px; border: 1.5px solid rgba(255,255,255,.28); z-index: 2; }
+  .corner.tl2 { top: 58px; left: 58px; border-right: 0; border-bottom: 0; }
+  .corner.tr2 { top: 58px; right: 58px; border-left: 0; border-bottom: 0; }
+  .corner.bl2 { bottom: 88px; left: 58px; border-right: 0; border-top: 0; }
+  .corner.br2 { bottom: 88px; right: 58px; border-left: 0; border-top: 0; }
+  .scalebar { position: absolute; bottom: 40px; left: 34px; display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,.5); font-size: 10.5px; z-index: 2; }
+  .scalebar .bar { width: 60px; height: 5px; border-left: 1.5px solid rgba(255,255,255,.5); border-right: 1.5px solid rgba(255,255,255,.5); border-bottom: 1.5px solid rgba(255,255,255,.5); }
+  .vlabel { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; font-size: 11px; color: rgba(255,255,255,.42); letter-spacing: .02em; z-index: 2; }
+  .xai-legend { position: absolute; bottom: 40px; right: 34px; z-index: 2; text-align: right; color: rgba(255,255,255,.5); font-size: 10px; }
+  .xai-legend .ramp { width: 90px; height: 7px; border-radius: 99px; margin-top: 4px; margin-left: auto;
+    background: linear-gradient(90deg, transparent, rgba(240,140,40,.6), rgba(214,51,108,.9)); box-shadow: 0 0 0 1px rgba(255,255,255,.15); }
+  .scrubber { padding: 14px 18px; border-top: 1px solid rgba(255,255,255,.07); background: rgba(0,0,0,.2); }
+  .scrubber .ticks { display: flex; justify-content: space-between; font-size: 9.5px; color: rgba(255,255,255,.35); margin-top: 5px; }
+  .rail { display: flex; flex-direction: column; gap: 14px; padding: 18px; overflow-y: auto;
+    background: hsl(var(--bg-2)); border-left: 1px solid hsl(var(--border)); }
+
+  .switch { position: relative; width: 40px; height: 23px; border-radius: 999px; background: hsl(var(--inset));
+    box-shadow: inset 0 0 0 1px hsl(var(--border-strong)); transition: background .18s, box-shadow .18s; flex: none; cursor: pointer; }
+  .switch.on { background: hsl(var(--primary)); box-shadow: var(--glow); }
+  .switch .knob { position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 999px; background: #fff;
+    transition: left .18s cubic-bezier(.16,1,.3,1); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .switch.on .knob { left: 19px; }
+
+  /* ── Report as a signed document ── */
+  .doc { max-width: 740px; margin: 0 auto; }
+  .stamp { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 8px; font-size: 11.5px; font-weight: 600;
+    border: 1px dashed hsl(var(--border-strong)); color: hsl(var(--fg-dim)); background: hsl(var(--inset) / .5); }
+  .ledger-note { border-left: 3px solid hsl(var(--primary)); background: hsl(var(--primary) / .07); padding: 13px 15px; border-radius: 10px; font-size: 12.5px; color: hsl(var(--fg-dim)); }
+
+  /* ── Wiring spec ── */
+  .spec-note { border-left: 3px solid hsl(var(--primary)); background: hsl(var(--primary) / .08); padding: 13px 15px; border-radius: 10px; margin-bottom: 20px; font-size: 13px; }
+  code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; background: hsl(var(--inset)); padding: 2px 6px; border-radius: 5px; box-shadow: inset 0 0 0 1px hsl(var(--border)); }
+  .forbidden { color: hsl(var(--bad)); font-weight: 600; } .allowed { color: hsl(var(--good)); font-weight: 600; }
+  .lock-list { list-style: none; line-height: 1.95; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ════ Sidebar ════════════════════════════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">◐</div>
+      <div><div class="name">PinkSight</div><div class="sub">RESEARCH · NOT CLINICAL</div></div>
+    </div>
+    <div class="nav-group">Workspace</div>
+    <a class="nav-item active" data-route="dashboard"><span class="ico">▦</span> Dashboard</a>
+    <a class="nav-item" data-route="patients"><span class="ico">☰</span> Patients</a>
+    <a class="nav-item" data-route="viewer"><span class="ico">◎</span> Study Viewer</a>
+    <a class="nav-item" data-route="report"><span class="ico">▤</span> Report</a>
+    <div class="nav-group">System</div>
+    <a class="nav-item" data-route="settings"><span class="ico">⚙</span> Settings</a>
+    <a class="nav-item" data-route="wiring"><span class="ico">🔌</span> Wiring Spec</a>
+    <div class="motto"><span class="dot" style="background:hsl(var(--good));color:hsl(var(--good))"></span> <b>Integrity</b> › Performance › Impact</div>
+  </aside>
+
+  <main class="main">
+    <!-- ════ Dashboard (bento) ════════════════════════════════════════════════════════════════ -->
+    <section class="screen active" id="dashboard">
+      <div class="pad">
+        <div class="page-head">
+          <div class="eyebrow">Gate G3 · characterisation workstation</div>
+          <h1>Workstation</h1>
+          <p>Explainable multimodal characterisation — subtype &amp; grade at diagnosis.</p>
+        </div>
+
+        <div class="bento">
+          <!-- Hero = the honest ceiling (the product's ethos, led with, not buried) -->
+          <div class="card hero">
+            <div class="metric-hero">
+              <h3>Honest Performance · subtype AUROC</h3>
+              <div class="big tnum" data-wire="perf.clinicalAuroc">0.708</div>
+              <div class="dim xs" style="margin-top:2px">clinical anchor</div>
+              <div class="cmp">
+                <div><div class="k">Imaging-only</div><div class="v tnum dim" data-wire="perf.imagingAuroc">0.567</div></div>
+                <div><div class="k">Δ ceiling</div><div class="v tnum" style="color:hsl(var(--warn))">+0.141</div></div>
+              </div>
+              <div class="gapbar"><i style="width:56.7%;background:hsl(var(--fg-faint))"></i><i style="width:70.8%;background:linear-gradient(90deg,hsl(var(--primary-soft)),hsl(var(--primary)));opacity:.5"></i></div>
+              <p class="tiny faint" style="margin-top:auto;padding-top:16px">Performance is reported with its ceiling, never inflated. Imaging adds no separable subtype signal beyond clinical on this cohort.</p>
+            </div>
+          </div>
+
+          <div class="card hover">
+            <h3>Active Model</h3>
+            <div class="stack xs">
+              <div class="row"><span class="dim">Backbone</span><span data-wire="model.backbone">3D-ResNet-18 (G2)</span></div>
+              <div class="row"><span class="dim">Split</span><span class="tnum" data-wire="model.split">split_v2 · scanner</span></div>
+              <div class="row"><span class="dim">Calibration</span><span class="badge good" data-wire="model.ece">ECE 0.041</span></div>
+            </div>
+          </div>
+
+          <div class="card hover">
+            <h3>Inference Sidecar</h3>
+            <div class="stack xs">
+              <div class="row"><span class="dim">Endpoint</span><span class="mono faint">127.0.0.1:8756</span></div>
+              <div class="row"><span class="dim">Status</span>
+                <span style="display:flex;align-items:center;gap:7px">
+                  <span class="dot pulse" id="healthDot" style="background:hsl(var(--good));color:hsl(var(--good))"></span>
+                  <span class="tnum" id="healthText" data-wire="GET /health → ok">online</span>
+                </span>
+              </div>
+              <div class="row"><span class="dim">Runtime</span><span class="faint tiny">PyTorch/MONAI · out-of-process</span></div>
+            </div>
+          </div>
+
+          <!-- Claim ledger as a distinct "constitution" band -->
+          <div class="card wide" style="background:linear-gradient(180deg,hsl(var(--surface)),hsl(var(--inset) / .4))">
+            <div class="row" style="align-items:baseline;margin-bottom:14px">
+              <h3 style="margin:0">Claim Ledger — the constitution</h3>
+              <span class="tiny faint">never violated · guards submission claims, not exploration</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+              <div><div class="tiny allowed" style="letter-spacing:.08em;margin-bottom:7px">✓ ALLOWED</div>
+                <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>Subtype characterisation</li><li>Ki-67 stratification at diagnosis</li><li>Explainable multimodal fusion</li></ul></div>
+              <div><div class="tiny forbidden" style="letter-spacing:.08em;margin-bottom:7px">✕ FORBIDDEN</div>
+                <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>Early / pre-detection</li><li>Growth-rate / kinetics</li><li>Cross-institution generalisation</li></ul></div><!-- # allow-ledger -->
+              <div><div class="tiny" style="letter-spacing:.08em;margin-bottom:7px;color:hsl(var(--fg-dim))">✎ WORDING</div>
+                <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>"characterisation", not "detection"</li><li>"Ki-67 / aggressiveness", not "growth rate"</li></ul></div>
+            </div>
+          </div>
+        </div>
+        <p class="tiny faint" style="margin-top:20px">Open <b style="color:hsl(var(--primary-soft))">Patients</b> to load a study and run characterisation.</p>
+      </div>
+    </section>
+
+    <!-- ════ Patients ═══════════════════════════════════════════════════════════════════════════ -->
+    <section class="screen" id="patients">
+      <div class="pad">
+        <div class="page-head"><div class="eyebrow">Cohort</div><h1>Patients</h1><p>Click a study to open the viewer.</p></div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table>
+            <thead><tr><th>Study</th><th>Patient</th><th>Scanner</th><th>Year</th><th>Series</th><th>Split</th></tr></thead>
+            <tbody data-wire="GET /studies (mock: baked table)">
+              <tr class="clickable" onclick="go('viewer')"><td class="tnum" style="font-weight:600">DUKE-0421</td><td class="dim">P-0421</td><td>GE 1.5T</td><td class="tnum">2019</td><td class="dim">DCE 6-phase</td><td><span class="badge">train/val</span></td></tr>
+              <tr class="clickable" onclick="go('viewer')"><td class="tnum" style="font-weight:600">DUKE-0588</td><td class="dim">P-0588</td><td>Siemens 3T</td><td class="tnum">2021</td><td class="dim">DCE 5-phase</td><td><span class="badge">train/val</span></td></tr>
+              <tr class="clickable" onclick="go('viewer')"><td class="tnum" style="font-weight:600">DUKE-0733</td><td class="dim">P-0733</td><td>GE 3T</td><td class="tnum">2020</td><td class="dim">DCE 6-phase</td><td><span class="badge warn">held-out</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ Study Viewer ═══════════════════════════════════════════════════════════════════════ -->
+    <section class="screen" id="viewer">
+      <div class="viewer">
+        <div class="viewport">
+          <div class="topbar">
+            <span class="tnum" data-wire="study.id + phase">DUKE-0421 · DCE-MRI · phase <span id="phaseLbl">2</span>/5</span>
+            <button class="btn sm outline" id="xaiBtn" onclick="toggleXai()">◩ XAI overlay</button>
+          </div>
+          <div class="canvas-wrap">
+            <span class="orient n">A</span><span class="orient s">P</span>
+            <span class="corner tl2"></span><span class="corner tr2"></span><span class="corner bl2"></span><span class="corner br2"></span>
+            <div class="hud tl"><div><span class="k">SER</span> 3 · AX · DCE</div><div><span class="k">W</span> 240 <span class="k">L</span> 120</div></div>
+            <div class="hud tr"><div><span class="k">FOV</span> 320mm</div><div><span class="k">TE/TR</span> 2.4/5.8</div></div>
+            <canvas id="phantom" width="384" height="384"></canvas>
+            <div class="scan"></div><div class="vignette"></div>
+            <div class="scalebar"><span class="bar"></span> 2 cm</div>
+            <div class="xai-legend" id="xaiLegend">Grad-CAM saliency<div class="ramp"></div><span style="font-size:9px">low → high</span></div>
+            <span class="vlabel">synthetic phantom — not patient data</span>
+          </div>
+          <div class="scrubber">
+            <input type="range" min="0" max="5" value="2" id="phaseSlider" oninput="onPhase(this.value)" />
+            <div class="ticks"><span>pre</span><span>1</span><span>2</span><span>3</span><span>4</span><span>peak</span></div>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <!-- Dispatch picker: routing-decision ONLY. Never a per-organ number, never a Run button. -->
+          <div class="card">
+            <h3>Cohort / modality routing</h3>
+            <div class="stack">
+              <div>
+                <label class="tiny faint" style="display:block;margin-bottom:5px">Cohort</label>
+                <select id="cohort" onchange="onCohort(this.value)" data-wire="GET /dispatch?cohort=…">
+                  <option value="">— select cohort —</option>
+                  <option>duke</option><option>tcga_brca</option><option>metabric</option><option>cptac_brca</option>
+                  <option>cdd_cesm</option><option>cmmd</option><option>fastmri_nyu</option><option>track_c</option>
+                </select>
+              </div>
+              <div>
+                <label class="tiny faint" style="display:block;margin-bottom:5px">Modalities</label>
+                <div id="mods" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px" data-wire="GET /dispatch?modalities=…"></div>
+              </div>
+              <button class="btn outline sm" id="routeBtn" onclick="checkRouting()" disabled>Check routing</button>
+              <div id="routeResult"></div>
+            </div>
+          </div>
+
+          <button class="btn" id="runBtn" onclick="runCharacterise()">▶ Run characterisation</button>
+
+          <div id="railReport" style="display:none">
+            <span class="stamp" id="provTag" data-wire="report.provenance.datasetTag">◆ MOCK — NOT SYNTHETIC, NOT A RESULT</span>
+            <div class="card" style="margin-top:12px"><h3>Subtype characterisation</h3><div id="railSubtype"></div></div>
+            <div class="card" style="margin-top:12px"><h3>Cross-attention fusion</h3><div id="railFusion"></div>
+              <p class="tiny faint" style="padding-top:8px">Modality-dropout gating: absent streams contribute nothing, shown honestly.</p></div>
+            <div class="card" style="margin-top:12px"><div class="row"><span class="xs">Calibration (ECE)</span><span class="badge good" data-wire="report.calibration">0.041 · good</span></div></div>
+            <button class="btn outline" style="margin-top:12px;width:100%" onclick="go('report')">▤ Open signed report</button>
+          </div>
+
+          <p class="tiny faint" style="margin-top:auto;line-height:1.7">Characterisation &amp; localisation only. Not early detection. Not growth rate. Ki-67 shown as a diagnosis-time descriptor, never kinetics.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ════ Report (signed document) ═══════════════════════════════════════════════════════════ -->
+    <section class="screen" id="report">
+      <div class="pad" style="max-width:none">
+        <div class="doc">
+          <button class="btn ghost sm" onclick="go('viewer')" style="margin-bottom:16px">← Back to viewer</button>
+          <div class="row" style="align-items:flex-start;margin-bottom:14px">
+            <div><div class="eyebrow">Explainable fusion</div><h1 style="font-size:22px;font-weight:680">Characterisation Report</h1>
+              <p class="dim xs">Subtype &amp; grade at diagnosis</p></div>
+            <span class="mono dim xs" data-wire="report.studyId" style="margin-top:4px">DUKE-0421</span>
+          </div>
+          <div style="margin-bottom:18px"><span class="stamp" data-wire="report.provenance.datasetTag">◆ MOCK — NOT SYNTHETIC, NOT A RESULT</span></div>
+
+          <div class="stack" style="--x:16px">
+            <div class="card"><h3>Characterisation</h3>
+              <div id="repSubtype"></div>
+              <p class="tiny faint" style="padding-top:10px"><b style="color:hsl(var(--fg-dim))">Ki-67:</b> <span data-wire="report.ki67Descriptor">Descriptive companion — imaging correlate of Ki-67 index at diagnosis (not kinetics).</span></p></div>
+
+            <div class="card" style="margin-top:16px"><h3>Cross-attention fusion</h3><div id="repFusion"></div>
+              <p class="tiny faint" style="padding-top:8px">Modality-dropout gating: absent streams contribute nothing, shown honestly.</p></div>
+
+            <div class="card" style="margin-top:16px"><h3>Explainability (XAI)</h3>
+              <div class="stack xs" data-wire="report.xai">
+                <div class="row"><span class="dim">Saliency IoU</span><span class="badge" data-wire="report.xai.iou">n/a</span></div>
+                <div class="row"><span class="dim">Pointing game</span><span class="badge" data-wire="report.xai.pointingGame">n/a</span></div>
+                <div class="row"><span class="dim">Randomization sanity</span><span class="badge" data-wire="report.xai.randomizationPassed">n/a</span></div>
+                <p class="tiny faint" style="padding-top:3px">XAI is reported, not gated, until a trained encoder exists.</p></div></div>
+
+            <div class="card" style="margin-top:16px"><h3>Reliability</h3>
+              <div class="cmeter" data-wire="report.calibration">
+                <div class="row" style="margin-bottom:7px"><span class="xs">Calibration (ECE)</span><span class="tnum" style="font-weight:640">0.041 <span class="faint" style="font-weight:400">· good</span></span></div>
+                <div class="track"><div class="fill" style="width:27.3%;background:linear-gradient(90deg,hsl(var(--good)/.6),hsl(var(--good)))"></div><div class="tick" style="left:33.3%"></div><div class="tick" style="left:66.6%"></div></div>
+                <div class="scale"><span>0</span><span>good ≤.05</span><span>acc ≤.10</span><span>.15</span></div></div></div>
+
+            <div class="card" style="margin-top:16px"><h3>Routing</h3>
+              <div class="stack tiny dim" data-wire="report.dispatch">
+                <div class="row"><span>Harness</span><span class="mono" data-wire="report.dispatch.harnessScript">scripts/train_g3_hierarchical.py</span></div>
+                <div class="row"><span>Status</span><span class="badge good" data-wire="report.dispatch.status">WIRED</span></div>
+                <div class="mono tiny">cross_cohort_gradient: false</div>
+                <p>No live prediction available for this organ yet — routing decision only.</p></div></div>
+
+            <div class="card" style="margin-top:16px"><h3>Reproducibility</h3>
+              <div class="stack tiny dim mono" data-wire="report.audit">
+                <div class="row"><span>Model hash</span><span data-wire="report.audit.modelHash">sha256:demo0000</span></div>
+                <div class="row"><span>Seed</span><span data-wire="report.audit.seed">42</span></div>
+                <div class="row"><span>Split</span><span data-wire="report.audit.split">split_v2 (scanner holdout)</span></div></div></div>
+
+            <p class="ledger-note" style="margin-top:16px">Research output (OPSI 2026). Characterisation &amp; localisation of subtype and grade at diagnosis. Not a diagnostic device. Not early detection.</p>
+            <button class="btn" style="margin-top:16px;width:100%" disabled>🔒 Sign &amp; export (PDF / DICOM-SR) — stub</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ Settings ═══════════════════════════════════════════════════════════════════════════ -->
+    <section class="screen" id="settings">
+      <div class="pad" style="max-width:600px">
+        <div class="page-head"><div class="eyebrow">System</div><h1>Settings</h1></div>
+        <div class="stack" style="--x:16px">
+          <div class="card"><h3>Appearance</h3>
+            <div class="row"><span class="xs">Theme</span><button class="btn outline sm" onclick="toggleTheme()" id="themeBtn">Dark — toggle</button></div></div>
+          <div class="card" style="margin-top:16px"><h3>Inference sidecar</h3>
+            <div class="stack xs">
+              <div class="row"><span id="modeLabel" data-wire="inferenceMode (live narrows PINKSIGHT_SIDECAR_LIVE)">Mode: Mock</span>
+                <div class="switch" id="modeSwitch" onclick="toggleMode()"><span class="knob"></span></div></div>
+              <div class="row dim"><span>Endpoint</span><span class="mono">http://127.0.0.1:8756</span></div>
+              <div class="row dim"><span>Start</span><span class="mono">npm run sidecar</span></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ Wiring Spec ════════════════════════════════════════════════════════════════════════ -->
+    <section class="screen" id="wiring">
+      <div class="pad">
+        <div class="page-head"><div class="eyebrow">For redesign</div><h1>Wiring Spec</h1>
+          <p>What to re-connect when you redesign this file. Every dynamic element carries a <code>data-wire</code> attribute naming its source.</p></div>
+        <div class="spec-note"><b>This file is a MOCK design playground.</b> Nothing talks to the sidecar. Redesign freely, keep the <code>data-wire</code> annotations, then map them back to the real React app (<code>desktop/src</code>) + Python sidecar using the tables below.</div>
+
+        <h3 style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--fg-faint));margin:20px 0 8px">1 · Backend surface — Python sidecar @ <code>127.0.0.1:8756</code></h3>
+        <div class="card" style="padding:0;overflow:hidden"><table>
+          <thead><tr><th>Method · Path</th><th>Params / Body</th><th>Returns</th><th>Drives</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">GET /health</td><td>—</td><td><code>{ok: boolean}</code></td><td class="dim">Dashboard status dot (poll 3s)</td></tr>
+            <tr><td class="mono">GET /dispatch</td><td><code>?cohort=str&amp;modalities=csv</code></td><td><code>DispatchBlock</code> (routing only)</td><td class="dim">Viewer → "Check routing"</td></tr>
+            <tr><td class="mono">POST /infer</td><td><code>{studyId, live?, cohort?, modalities?}</code></td><td><code>CharacterisationReport</code></td><td class="dim">"Run characterisation" → rail + Report</td></tr>
+          </tbody>
+        </table></div>
+        <p class="tiny faint" style="margin-top:8px"><code>live</code> only <b>narrows</b> the server <code>PINKSIGHT_SIDECAR_LIVE</code> gate — never widens it. Sidecar offline ⇒ <code>/infer</code> degrades to a MOCK-tagged report; <code>/dispatch</code> has NO mock fallback (shows "sidecar unreachable" honestly).</p>
+
+        <h3 style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--fg-faint));margin:24px 0 8px">2 · <code>CharacterisationReport</code> schema (the /infer contract)</h3>
+        <div class="card" style="padding:0;overflow:hidden"><table>
+          <thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead>
+          <tbody class="tiny">
+            <tr><td class="mono">subtype</td><td>{label, probability, uncertainty:[lo,hi], abstained}</td><td class="dim">Luminal A | Triple-Negative · shown inside its band</td></tr>
+            <tr><td class="mono">ki67Descriptor</td><td>string</td><td class="dim">diagnosis-time descriptor — NEVER kinetics/growth-rate</td></tr>
+            <tr><td class="mono">nottinghamGrade</td><td>{label: NHG1|2|3, probability, uncertainty}</td><td class="dim">2nd characterisation head</td></tr>
+            <tr><td class="mono">calibration</td><td>{ece, band: good|acceptable|poor}</td><td class="dim">drives the calibration meter</td></tr>
+            <tr><td class="mono">modalities[]</td><td>{modality, present, contribution}</td><td class="dim">signed Shapley → fusion bars; absent ⇒ greyed, 0</td></tr>
+            <tr><td class="mono">provenance?</td><td>{datasetTag, seed, cohortStream, …}</td><td class="dim">MOCK vs "SYNTHETIC — NOT A RESULT"</td></tr>
+            <tr><td class="mono">xai?</td><td>{iou, pointingGame, randomizationPassed, note}</td><td class="dim">reported-not-gated; card hides when absent</td></tr>
+            <tr><td class="mono">dispatch?</td><td>DispatchBlock</td><td class="dim">routing decision echoed into the report</td></tr>
+            <tr><td class="mono">audit</td><td>{modelHash, seed, split, generatedAt}</td><td class="dim">reproducibility block</td></tr>
+          </tbody>
+        </table></div>
+        <p class="tiny faint" style="margin-top:8px"><code>DispatchBlock</code> = <code>{cohort, modalities[], harnessScript|null, status:"WIRED"|"NOT WIRED — confirm path or backlog", crossCohortGradient:false, note}</code>. Matched by EXACT (cohort, frozenset(modalities)) tuple.</p>
+
+        <h3 style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--fg-faint));margin:24px 0 8px">3 · Wire points — element <code>data-wire</code> → source</h3>
+        <div class="card" style="padding:0;overflow:hidden"><table>
+          <thead><tr><th>Screen · element</th><th>data-wire</th><th>Source</th></tr></thead>
+          <tbody class="tiny">
+            <tr><td>Dashboard · status dot</td><td class="mono">GET /health → ok</td><td class="dim">poll /health, green=ok / red=offline</td></tr>
+            <tr><td>Viewer · cohort select</td><td class="mono">GET /dispatch?cohort=…</td><td class="dim">fetchDispatch(cohort, modalities)</td></tr>
+            <tr><td>Viewer · routing result</td><td class="mono">report.dispatch</td><td class="dim">DispatchBlock — harness + WIRED badge, NO number</td></tr>
+            <tr><td>Viewer/Report · fusion bars</td><td class="mono">report.modalities</td><td class="dim">signed contribution per modality</td></tr>
+            <tr><td>Report · subtype/grade bars</td><td class="mono">report.subtype / .nottinghamGrade</td><td class="dim">probability + uncertainty band</td></tr>
+            <tr><td>Report · XAI panel</td><td class="mono">report.xai</td><td class="dim">iou / pointingGame / randomizationPassed</td></tr>
+            <tr><td>Report · calibration meter</td><td class="mono">report.calibration</td><td class="dim">ece on 0–.15 scale, band color</td></tr>
+            <tr><td>Settings · mode switch</td><td class="mono">inferenceMode</td><td class="dim">live flag on /infer (narrows gate only)</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3 style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--fg-faint));margin:24px 0 8px">4 · Invariants a redesign MUST preserve</h3>
+        <div class="card"><ul class="lock-list xs">
+          <li>🔒 <b>Routing-only picker.</b> Shows which harness owns a (cohort, modalities) tuple and whether it is WIRED — <b>never a per-organ number, never a Run button.</b> 0/10 organs have a single-patient forward path (the honest ceiling).</li>
+          <li>🔒 <b>Every payload tagged.</b> A model output never appears as a bare number — it is MOCK- or "SYNTHETIC — NOT A RESULT"-tagged, and always sits inside its uncertainty band. Abstention is shown, not guessed.</li>
+          <li>🔒 <b>Forbidden copy</b> (claim ledger): <span class="forbidden">early/pre-detection · growth rate · doubling time · kinetics · screening · cross-institution</span>. Say <span class="allowed">characterisation / localisation</span> and <span class="allowed">Ki-67 / aggressiveness</span>.</li>
+          <li>🔒 <b>Phantom is synthetic.</b> Labeled "not patient data"; the phase slider's enhancement is a <i>display axis</i>, never a kinetics claim.</li>
+          <li>🔒 <b>Honest performance.</b> Imaging-only AUROC (0.567) shown alongside the clinical anchor (0.708) — the ceiling is never hidden.</li>
+        </ul></div>
+        <p class="tiny faint" style="margin-top:18px">Real app: <code>desktop/src/routes/*.tsx</code> · <code>desktop/src/lib/inference.ts</code> (schema + fetch) · <code>desktop/sidecar/main.py</code> (endpoints + ledger guard) · <code>scripts/pinksight_dispatch.py</code> (registry).</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  /* ── MOCK data (design playground — swap for the live /infer payload; see Wiring Spec) ───── */
+  const MOCK = {
+    modalities: [
+      { modality: "clinical", present: true, contribution: 0.135 },
+      { modality: "mri", present: true, contribution: -0.025 },
+      { modality: "path", present: false, contribution: 0 },
+      { modality: "genomic", present: false, contribution: 0 },
+    ],
+    subtype: { label: "Luminal A", probability: 0.71, band: [0.58, 0.83], abstained: false },
+    grade: { label: "Nottingham NHG1", probability: 0.68, band: [0.55, 0.80] },
+  };
+  const MODALITIES = ["mri","clinical","wsi","genomics","purity","hrd","proteomic","cesm","ffdm","dce","tabular","recurrence"];
+  const COHORT_DEFAULTS = { duke:["mri","clinical"], tcga_brca:["wsi","genomics"], metabric:["purity"],
+    cptac_brca:["proteomic"], cdd_cesm:["cesm"], cmmd:["ffdm"], fastmri_nyu:["dce"], track_c:["tabular"] };
+  // Faithful mirror of scripts/pinksight_dispatch.py COHORT_HARNESS_REGISTRY (exact frozenset match).
+  const REGISTRY = {
+    "duke|clinical,mri":"scripts/train_g3_hierarchical.py",
+    "tcga_brca|wsi":"scripts/trackb_mil_cv.py",
+    "tcga_brca|genomics,wsi":"scripts/trackb_fusion_wsi_genomics.py",
+    "metabric|purity":"scripts/novel_heads/arm2_purity_admixture.py",
+    "tcga_brca|hrd":"scripts/novel_heads/arm4_hrd_brcaness.py",
+    "cptac_brca|proteomic":"scripts/novel_heads/arm8_proteogenomic_discordance.py",
+    "cdd_cesm|cesm":"scripts/novel_heads/arm1_cesm_iodine_radiomics.py",
+    "cmmd|ffdm":"scripts/novel_heads/arm9_cmmd_modality_transfer.py",
+    "fastmri_nyu|dce":"scripts/train_fastmri_nyu.py",
+    "track_c|tabular":"scripts/track_c_tabular_panel.py",
+  };
+  function dispatch(cohort, mods) {
+    const h = REGISTRY[cohort + "|" + [...mods].sort().join(",")];
+    return h
+      ? { harnessScript: h, status: "WIRED", note: "inference-time routing only (no >1-cohort gradient)" }
+      : { harnessScript: null, status: "NOT WIRED — confirm path or backlog", note: "no harness owns this (cohort, modalities) tuple" };
+  }
+
+  /* ── Router ── */
+  function go(route) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === route));
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.route === route));
+    if (route === "viewer") drawPhantom();
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll(".nav-item").forEach(n => n.addEventListener("click", () => go(n.dataset.route)));
+
+  /* ── Renderers (shared by rail + report) ── */
+  const pct = n => Math.round(n * 100) + "%";
+  function ubar(x) {
+    return `<div class="ubar"><div class="lab"><span>${x.label}</span>
+      <span class="tnum" style="font-weight:640">${pct(x.probability)}
+      <span class="faint" style="font-weight:400">[${pct(x.band[0])}–${pct(x.band[1])}]</span></span></div>
+      <div class="track"><div class="band" style="left:${x.band[0]*100}%;width:${(x.band[1]-x.band[0])*100}%"></div>
+      <div class="pt" style="left:${x.probability*100}%"></div></div></div>`;
+  }
+  function fusionBars(mods) {
+    const max = Math.max(0.05, ...mods.filter(m => m.present).map(m => Math.abs(m.contribution)));
+    return mods.map(m => {
+      const frac = m.present ? Math.abs(m.contribution) / max : 0, pos = m.contribution >= 0;
+      const w = (frac * 50).toFixed(1) + "%";
+      const fill = m.present ? `<div class="fill ${pos?"pos":"neg"}" style="${pos?"left:50%":"right:50%"};width:${w}"></div>` : "";
+      return `<div class="mbar" data-wire="report.modalities[]"><span class="swatch ${m.modality} ${m.present?"":"absent"}"></span>
+        <span class="mname ${m.present?"":"faint"}">${m.modality}</span>
+        <div class="mtrack"><div class="mid"></div>${fill}</div>
+        <span class="mval ${m.present?"":"faint tiny"}">${m.present ? (pos?"+":"")+m.contribution.toFixed(3) : "absent"}</span></div>`;
+    }).join("");
+  }
+
+  /* ── Study viewer: phantom, phase, XAI, dispatch, run flow ── */
+  let phase = 2, xai = true;
+  function drawPhantom() {
+    const cv = document.getElementById("phantom"), ctx = cv.getContext("2d");
+    const W = cv.width, H = cv.height, cx = W/2, cy = H/2, enh = phase/5;
+    ctx.clearRect(0,0,W,H); ctx.fillStyle = "#05070d"; ctx.fillRect(0,0,W,H);
+    const t = ctx.createRadialGradient(cx,cy,20,cx,cy,W*0.5);
+    t.addColorStop(0,"#4a5262"); t.addColorStop(0.6,"#2a303c"); t.addColorStop(1,"#0a0d14");
+    ctx.fillStyle = t; ctx.beginPath(); ctx.arc(cx,cy,W*0.42,0,7); ctx.fill();
+    let seed = 1337; const rnd = () => ((seed = (seed*1103515245+12345)&0x7fffffff)/0x7fffffff);
+    ctx.globalAlpha = 0.06;
+    for (let i=0;i<1400;i++){ const a=rnd()*6.283, r=rnd()*W*0.42;
+      ctx.fillStyle = rnd()>0.5?"#fff":"#000"; ctx.fillRect(cx+Math.cos(a)*r, cy+Math.sin(a)*r, 1.5, 1.5); }
+    ctx.globalAlpha = 1;
+    const lx = cx+W*0.12, ly = cy-H*0.08, b = 120+Math.round(enh*110);
+    const les = ctx.createRadialGradient(lx,ly,2,lx,ly,W*0.13);
+    les.addColorStop(0,`rgb(${b},${b},${b})`); les.addColorStop(1,"rgba(120,120,120,0)");
+    ctx.fillStyle = les; ctx.beginPath(); ctx.arc(lx,ly,W*0.13,0,7); ctx.fill();
+    if (xai) { const c = ctx.createRadialGradient(lx,ly,2,lx,ly,W*0.16);
+      c.addColorStop(0,"rgba(214,51,108,0.55)"); c.addColorStop(0.5,"rgba(240,140,40,0.35)"); c.addColorStop(1,"rgba(240,140,40,0)");
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(lx,ly,W*0.16,0,7); ctx.fill(); }
+  }
+  function onPhase(v){ phase = +v; document.getElementById("phaseLbl").textContent = v; drawPhantom(); }
+  function toggleXai(){ xai = !xai; const b = document.getElementById("xaiBtn");
+    b.className = "btn sm" + (xai?"":" outline"); document.getElementById("xaiLegend").style.display = xai?"block":"none"; drawPhantom(); }
+
+  let cohort = "", mods = [];
+  function renderMods(){
+    document.getElementById("mods").innerHTML = MODALITIES.map(m =>
+      `<label class="tiny" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" ${mods.includes(m)?"checked":""} onchange="toggleMod('${m}',this.checked)">${m}</label>`).join("");
+    document.getElementById("routeBtn").disabled = !cohort || mods.length === 0;
+  }
+  function toggleMod(m,on){ mods = on ? [...mods,m] : mods.filter(x=>x!==m); renderMods(); }
+  function onCohort(c){ cohort = c; if (c && mods.length===0 && COHORT_DEFAULTS[c]) mods = [...COHORT_DEFAULTS[c]]; renderMods(); }
+  function checkRouting(){
+    const d = dispatch(cohort, mods), wired = d.status === "WIRED";
+    document.getElementById("routeResult").innerHTML =
+      `<div class="card" style="padding:13px;margin-top:4px"><div class="stack xs">
+        <div class="row"><span class="dim">Harness</span><span class="mono tiny" style="text-align:right">${d.harnessScript ?? "—"}</span></div>
+        <div class="row"><span class="dim">Status</span><span class="badge ${wired?"good":"warn"}">${d.status}</span></div>
+        <div class="mono tiny faint">cross_cohort_gradient: false</div>
+        <p class="tiny faint">${d.note}</p>
+        <p class="tiny faint">No live prediction available for this organ yet — routing decision only.</p></div></div>`;
+  }
+  function runCharacterise(){
+    document.getElementById("runBtn").style.display = "none";
+    document.getElementById("railReport").style.display = "block";
+    document.getElementById("railSubtype").innerHTML = ubar(MOCK.subtype) + ubar(MOCK.grade);
+    document.getElementById("railFusion").innerHTML = fusionBars(MOCK.modalities);
+  }
+
+  /* ── Settings: theme + mode ── */
+  function toggleTheme(){
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+    document.getElementById("themeBtn").textContent = (dark ? "Light" : "Dark") + " — toggle";
+  }
+  let live = false;
+  function toggleMode(){
+    live = !live;
+    document.getElementById("modeSwitch").className = "switch" + (live?" on":"");
+    document.getElementById("modeLabel").textContent = "Mode: " + (live ? "Synthetic (live)" : "Mock");
+  }
+
+  /* ── Init ── */
+  document.getElementById("repSubtype").innerHTML = ubar(MOCK.subtype) + ubar(MOCK.grade);
+  document.getElementById("repFusion").innerHTML = fusionBars(MOCK.modalities);
+  renderMods();
+  drawPhantom();
+</script>
+</body>
+</html>

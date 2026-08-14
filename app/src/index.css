@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  PinkSight design tokens — clinical calm, one signal accent, semantic color only.
+  Rule (Design Systems Lead + Brand Designer): color carries MEANING, not decoration.
+  "PinkSight" ≠ pink-everything: rose is the single interactive/brand signal.
+*/
+@layer base {
+  :root {
+    --background: 210 24% 98%;
+    --foreground: 215 28% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 14%;
+    --muted: 214 20% 94%;
+    --muted-foreground: 215 16% 42%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 336 62% 48%;
+
+    --primary: 336 62% 48%;          /* disciplined rose — the ONE signal color */
+    --primary-foreground: 0 0% 100%;
+
+    /* Trust semantics — the heart of the product */
+    --uncertain: 38 92% 48%;         /* amber: model is unsure */
+    --abstain: 215 14% 52%;          /* slate: model declines */
+    --good: 152 55% 38%;             /* calibration ECE <= 0.05 */
+    --warn: 38 92% 48%;              /* calibration 0.05–0.10 */
+    --bad: 4 68% 50%;                /* calibration > 0.10 */
+
+    /* Modality provenance — which stream contributed */
+    --mod-mri: 210 85% 52%;
+    --mod-clinical: 176 60% 38%;
+    --mod-path: 268 52% 56%;         /* Track B (future) */
+    --mod-genomic: 292 48% 52%;      /* Track B (future) */
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 216 28% 9%;
+    --foreground: 210 20% 92%;
+    --card: 216 26% 12%;
+    --card-foreground: 210 20% 92%;
+    --muted: 216 20% 18%;
+    --muted-foreground: 215 16% 62%;
+    --border: 216 20% 20%;
+    --input: 216 20% 20%;
+    --ring: 336 64% 56%;
+
+    --primary: 336 64% 56%;
+    --primary-foreground: 216 28% 9%;
+
+    --uncertain: 38 90% 55%;
+    --abstain: 215 14% 60%;
+    --good: 152 50% 48%;
+    --warn: 38 90% 55%;
+    --bad: 4 72% 60%;
+
+    --mod-mri: 210 82% 62%;
+    --mod-clinical: 176 55% 48%;
+    --mod-path: 268 55% 66%;
+    --mod-genomic: 292 50% 62%;
+  }
+
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    /* select-none by default: this is an app, not a document */
+    user-select: none;
+  }
+  /* Numbers everywhere are provenance — make them legible and tabular */
+  .tnum { font-variant-numeric: tabular-nums; }
+}

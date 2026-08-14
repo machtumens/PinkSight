@@ -1,0 +1,32 @@
+# data & models — never commit cohort data or weights
+# (adapted from the source repository's own root .gitignore)
+/data/*
+!/data/README.md
+datasets/raw/
+datasets/interim/
+datasets/processed/
+*.nii
+*.nii.gz
+*.dcm
+*.pt
+*.pth
+*.ckpt
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.env
+
+# os/editor
+.DS_Store
+.ipynb_checkpoints/
+# LibreOffice lock files
+.~lock.*#
+
+# tool caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/

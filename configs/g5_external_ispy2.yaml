@@ -1,0 +1,74 @@
+# G5 LEG-1 external validation contract — ISPY2-only (PinkSight, OPSI 2026).
+#
+# LOCKED evaluation, ZERO tuning (plan §3.2, [6.5]). The frozen clinical-subtype model (the Duke
+# 0.708 model) is RE-FIT deterministically on ALL of Duke-dev, then applied ONCE to ISPY2 external.
+# There is NO saved clinical checkpoint on disk — the 0.708 clinical-subtype model IS a deterministic
+# re-fit (src/pinksight/models/clinical_encoder.py::fit_logreg_on_full_dev). CONCERN-2/E2 resolved:
+# model = deterministic re-fit, not a checkpoint path.
+#
+# ESTIMATOR (G5 re-run 25-07-26): H6 COALITION estimator — LogReg(C=1.0, max_iter=1000) +
+# OneHot(handle_unknown=ignore). This is the ablation-ladder / H6 modality-audit estimator that
+# produces the 0.708 clinical-subtype HEADLINE (reports/G2_imaging/MODALITY_AUDIT: clinical coalition
+# AUROC 0.708, N=613 3-way intersection). SUPERSEDES the prior FT-Transformer leg (internal ~0.634 ->
+# ext 0.525), which mismatched the LogReg headline (apples-to-oranges). Now LogReg-internal ->
+# LogReg-external so the drop Δ is matched to the 0.708 anchor.
+#
+# FRAMING (LOCK-1): "per-cohort external robustness / honesty pass — report the drop Δ." NEVER a
+# cross-institution generalisation CLAIM, never kinetics / early-detection.
+
+schema: pinksight.g5-external/ispy2-v1
+role: external-validation                 # honesty pass — report internal->external drop, no generalisation claim
+gate: G5-leg1
+compute: cpu-zero-dollar
+estimator: logreg_c1_maxiter1000_onehot   # H6 coalition estimator (matches the 0.708 headline); was: ft_transformer_nblocks2 (prior leg)
+
+# --- Cohort selection ------------------------------------------------------------------------------
+external_table: data/mamma_mia/clinical_and_imaging_info.xlsx
+clean_ids: reports/external_clean_ids.txt   # dedup'd pool (Duke ∩ external = 0, enforced by tests/test_splits.py)
+cohort: ISPY2                               # dataset tag; the ONLY balanced LumA-vs-TNBC external set
+balanced_n_expected: 739                    # LumA 381 + TNBC 358 (audited 16-07-26, plan §3.1)
+
+# INTEGRITY (LOCK-2 cohort-shortcut guard): LumA exists ONLY in ISPY2. ISPY1/NACT label luminal cases
+# as generic 'luminal' (no A/B split) so they supply ONLY the TNBC arm. Pooling all three lets the
+# model exploit cohort => TNBC. The honest external validation is ISPY2-ONLY (N=739). ISPY1(45 TNBC)/
+# NACT(11 TNBC) are a TNBC-only sanity note reported SEPARATELY, NEVER pooled into a balanced AUROC.
+sanity_cohorts_tnbc_only: [ISPY1, NACT]
+
+# --- Label -----------------------------------------------------------------------------------------
+subtype_col: tumor_subtype
+label_map:                                  # LumA=0 (neg), TNBC=1 (pos) — matches Duke _LABEL {0:0, 3:1}
+  luminal_a: 0
+  triple_negative: 1
+# all other tumor_subtype values (luminal, luminal_b, her2_enriched, her2_pure, NaN) are OUT of the
+# LumA-vs-TNBC contrast and dropped (LOCK-3 scope).
+
+# --- Duke model + Duke-train stats (E1/E2 — no external stats fit) ---------------------------------
+duke_clinical_table: data/raw/Clinical_and_Other_Features.xlsx
+duke_split: configs/split_v2.yaml           # read-only; dev(624) is the full training set for the re-fit
+impute_stats_artifact: reports/G5_external/clinical_impute_stats_train.pkl  # Duke-TRAIN medians/mu/sd/cards
+                                            # (E1) generated from the dev fit if absent; LOCK-2: the ONLY
+                                            # stats that transform ISPY2. NEVER fit on external.
+seeds: [0, 1, 2]                            # 3-seed spread (LAW L-2 eval-integrity minimum)
+
+# --- Feature parity crosswalk (Duke feature -> ISPY2 column) --------------------------------------
+# Audited 16-07-26. Duke categoricals are integer-coded in the raw table; the published model applies
+# pd.factorize(+1, OOV=0). External string levels are mapped to Duke integer semantics, then any
+# unmapped/unseen level falls to the reserved OOV code 0 (model built to handle this — load_xy TICKET-022).
+# MISSING external features (no column, or all-NaN) are imputed with Duke-TRAIN stats (E1). This is
+# scientifically honest but concentrates the external signal on the 4 mappable features — reported.
+feature_parity:
+  numeric:
+    "Staging(Tumor Size)# [T]":                    { external: null,             status: absent_impute_duke_median }
+    "Staging(Nodes)#(Nx replaced by -1)[N]":       { external: null,             status: absent_impute_duke_median }
+    "Nottingham grade":                            { external: nottingham_grade, status: present_but_allnull_impute_duke_median }
+    "Age at diagnosis (years)":                    { external: age,              status: present }
+  categorical:
+    "Menopause (at diagnosis)":                    { external: menopause,        status: present_mapped }
+    "Race and Ethnicity":                          { external: ethnicity,        status: present_mapped }
+    "Multicentric/Multifocal":                     { external: multifocal_cancer,status: present_mapped }
+    "Metastatic at Presentation (Outside of Lymph Nodes)": { external: null,     status: absent_oov }
+    "Lymphadenopathy or Suspicious Nodes":         { external: null,             status: absent_oov }
+
+# --- Outputs ---------------------------------------------------------------------------------------
+out_metrics: reports/G5_external/metrics.json     # auroc, delong_ci, delta_internal_external, shuffle_auroc + parity log
+shuffle_seed: 0                                    # label-shuffle sentinel beside the external number

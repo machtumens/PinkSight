@@ -1,0 +1,39 @@
+PinkSight — Team TestEin, OPSI 2026
+Copyright 2026 Team TestEin.
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+The Apache-2.0 license and this NOTICE cover ONLY the source code in this repository.
+
+================================================================================
+Data, weights, and results — NOT covered by the code license
+================================================================================
+
+1. PATIENT DATA IS NOT REDISTRIBUTED.
+   This repository ships no patient data. Every cohort (Duke-Breast-Cancer-MRI,
+   TCGA-BRCA, ISPY2 / MAMA-MIA, fastMRI-NYU) must be obtained by you, directly
+   from its source, under that source's own Data-Use Agreement (DUA). This repo
+   holds no DUA on your behalf and grants no rights to any patient data. See
+   data/README.md for the per-cohort portal, license/DUA, and expected layout.
+   The Apache-2.0 grant above does NOT extend to any cohort's data.
+
+2. TRAINED WEIGHTS ARE NOT BUNDLED — HASH MANIFEST ONLY.
+   No trained weights ship here. The large trained artifacts (~1.9 GB) are
+   referenced by a checksummed manifest at results/TRAINED_ARTIFACTS.md, which
+   lists a SHA-256 per real trained artifact and per frozen-feature input so you
+   can locate and verify them once you have produced or obtained them yourself.
+   The manifest is provenance metadata, not the weights.
+
+3. RESULTS ARE PER-COHORT, WITHIN-COHORT, AND FIREWALLED.
+   The reportable numbers in results/Table2_results.md are each a within-cohort
+   result on its own patient-disjoint cohort. A number from one cohort is never
+   pooled with, compared to, or juxtaposed against a number from another (LOCK-1).
+   The claim boundary is documented in docs/CLAIM_LEDGER.md and enforced in CI by
+   ci/ledger_lint.py.
+
+4. SYNTHETIC DEMO OUTPUT IS NOT A RESULT.
+   `make demo` emits synthetic control-sentinel numbers labelled
+   "SYNTHETIC — NOT A RESULT": a forward-only wiring/integrity proof that the code
+   runs, never a scientific claim and never real-patient data. Real results and
+   synthetic wiring proofs are kept strictly separate (see README.md).
+
+Third-party dependencies retain their own licenses; see pyproject.toml.

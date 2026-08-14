@@ -1,0 +1,394 @@
+#!/usr/bin/env python3
+"""G5 LEG-1 — external validation of the clinical-subtype model on ISPY2 ($0, CPU).
+
+WHAT: score the frozen Duke clinical-subtype model (the 0.708 model) on the ISPY2 external cohort
+(N=739 LumA-vs-TNBC), report the internal->external drop Δ with a DeLong CI + a label-shuffle
+sentinel. FRAMING (LOCK-1): per-cohort external robustness / honesty pass — report the drop. NEVER a
+cross-institution generalisation CLAIM, never kinetics / early-detection.
+
+ESTIMATOR (G5 re-run 25-07-26): the H6 COALITION estimator — LogReg(C=1.0, max_iter=1000) +
+OneHot(handle_unknown=ignore) — the ablation-ladder estimator that produces the 0.708 clinical-subtype
+HEADLINE (reports/G2_imaging/MODALITY_AUDIT: clinical coalition AUROC 0.708 on the N=613 3-way imaging
+intersection). The PRIOR G5 leg used the FT-Transformer (clinical_encoder.cross_val_auroc, internal
+~0.634 -> ext 0.525); that sits UNDER a LogReg headline -> apples-to-oranges. This leg measures
+LogReg-internal -> LogReg-external so the drop Δ is matched to the 0.708 anchor.
+
+MODEL: there is NO saved clinical checkpoint on disk. The clinical model IS a deterministic re-fit
+(clinical_encoder.fit_logreg_on_full_dev). We train ONE LogReg on ALL Duke-dev (624 pts) per seed in
+{0,1,2}, apply each once to ISPY2, and report the seed spread (LAW L-2). LogReg on this problem is
+effectively deterministic across seeds; the near-zero seed spread is reported honestly.
+
+DUKE-TRAIN STATS (E1 / LOCK-2): missing external features are imputed with Duke-TRAIN statistics
+ONLY, loaded from reports/G5_external/clinical_impute_stats_train.pkl (generated from the dev fit if
+absent). NO statistic is ever fit on the ISPY2 table. FORBIDDEN_FEATURES never enter classifier inputs
+(clinical_encoder._assert_leak_free is called on every load).
+
+COHORT (LOCK-2 cohort-shortcut guard): ISPY2-ONLY for the balanced AUROC. LumA exists only in ISPY2;
+ISPY1/NACT supply TNBC only and are reported SEPARATELY as a TNBC-only sanity note, NEVER pooled.
+
+FEATURE PARITY: Duke uses 9 label-safe features. In ISPY2, 4 map (age, menopause, ethnicity,
+multifocal); 5 are absent/all-null (Nottingham grade + 2 staging + metastatic + lymphadenopathy) and
+are Duke-median-imputed (numeric) or fall to the reserved OOV code (categorical). This is honest but
+concentrates the external signal on 4 features — logged in metrics.json.
+
+Run:  uv run python scripts/g5_external_eval.py
+      uv run python scripts/g5_external_eval.py --config configs/g5_external_ispy2.yaml
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from pinksight import FORBIDDEN_FEATURES  # noqa: E402
+from pinksight.metrics import delong_ci  # noqa: E402
+from pinksight.models import clinical_encoder as ce  # noqa: E402
+
+
+# --- External categorical string -> Duke raw integer semantics -------------------------------------
+# The Duke raw table stores these categoricals as integers; the published model factorizes those
+# integers (+1, OOV=0). To apply the model to ISPY2's string levels we first translate each external
+# string to Duke's integer semantics, then run the SAME Duke-dev factorize (derived below). Any level
+# with no mapping -> np.nan -> reserved OOV code 0. Mappings audited 16-07-26 against both tables.
+#
+# Duke Menopause codes (dev dist 0:256 / 1:354 / 2:14). ISPY2 'menopause' strings:
+#   'pre (...)' -> pre-menopausal; 'post' -> post; 'peri (...)' -> peri. Duke's 3 codes are ordinal-ish
+#   {0,1,2}; the standard Duke encoding is 0=pre-ish / 1=post / 2=peri is NOT documented, so we map by
+#   the SAFEST correspondence that avoids inventing signal: pre->0, post->1, peri->2 (the three Duke
+#   levels, in the pre/post/peri order). Peri is rare in both cohorts. Ambiguity is disclosed.
+_MENO_EXT_TO_DUKE = {
+    "pre": 0,
+    "post": 1,
+    "peri": 2,
+}
+# Duke Ethnicity codes (dev dist 0:14 1:453 2:134 3:9 4:2 5:8 6:3 7:1). Duke code legend (Clinical
+# feature dictionary): 0=N/A, 1=white, 2=black, 3=asian, 4=native, 5=hispanic, 6=multi, 7=hawaiian/PI.
+# ISPY2 'ethnicity' strings mapped to that legend; unknown -> OOV.
+_ETH_EXT_TO_DUKE = {
+    "caucasian": 1,
+    "african american": 2,
+    "asian": 3,
+    "american indian/alaskan native": 4,
+    "hispanic": 5,
+    "multiple race": 6,
+    "hawaiian/pacific islander": 7,
+}
+
+
+def _norm_meno(v) -> float:
+    """ISPY2 menopause string -> Duke integer semantics (prefix match), else NaN (OOV)."""
+    if not isinstance(v, str):
+        return np.nan
+    s = v.strip().lower()
+    for pref, code in _MENO_EXT_TO_DUKE.items():
+        if s.startswith(pref):
+            return float(code)
+    return np.nan
+
+
+def _norm_eth(v) -> float:
+    if not isinstance(v, str):
+        return np.nan
+    return float(_ETH_EXT_TO_DUKE.get(v.strip().lower(), np.nan))
+
+
+def _duke_factorize_maps(clin_path: Path, split_yaml: Path) -> dict[str, dict[float, int]]:
+    """Recover the exact Duke-dev factorize mapping (raw integer level -> model code) per categorical.
+
+    load_xy does `codes, uniq = pd.factorize(numeric_col, use_na_sentinel=False); codes+1`. factorize
+    assigns codes 0..K-1 in FIRST-APPEARANCE order over the dev rows, then load_xy shifts +1 (0=OOV).
+    We reproduce that exactly here so an external value translated to a Duke integer level lands on the
+    SAME model code the encoder trained on. Deterministic (dev row order is fixed by the split)."""
+    from audit_ki67 import load as load_clinical
+
+    df = load_clinical(clin_path)
+    df.columns = [str(c) for c in df.columns]
+    dev = set(yaml.safe_load(split_yaml.read_text())["dev"])
+
+    def col(name):
+        s = df[name]
+        return s.iloc[:, 0] if isinstance(s, pd.DataFrame) else s
+
+    pid = col("Patient ID").astype(str).str.strip()
+    subtype = pd.to_numeric(col("Mol Subtype"), errors="coerce").map(ce._LABEL)
+    keep = pid.isin(dev) & subtype.notna()  # SAME keep mask as load_xy (dev ∩ in-scope subtype)
+
+    maps: dict[str, dict[float, int]] = {}
+    for c in ce.FEATURES_CAT:
+        series = pd.to_numeric(col(c), errors="coerce")[keep]
+        _codes, uniq = pd.factorize(series, use_na_sentinel=False)
+        # uniq[k] is the raw level assigned code k; +1 for load_xy's OOV shift.
+        maps[c] = {float(level): (k + 1) for k, level in enumerate(uniq) if pd.notna(level)}
+    return maps
+
+
+def _read_h6_clinical_anchor() -> dict:
+    """Read the H6 clinical-alone coalition AUROC (the 0.708 headline) from the modality-audit metrics.
+
+    The CLAUDE.md clinical-subtype headline IS the H6 ablation-ladder LogReg clinical coalition on the
+    N=613 3-way (clinical∩radiomics∩MRI) imaging intersection. We read it here (not re-run) so the
+    external Δ can be reconciled against the exact published anchor with its own N. Returns
+    {auroc, ci95, n, source} — auroc=None if the audit metrics are absent/not OK (fail-soft)."""
+    p = ROOT / "reports/G2_imaging/MODALITY_AUDIT/metrics.json"
+    if not p.exists():
+        return {"auroc": None, "ci95": None, "n": None, "source": "H6 metrics absent"}
+    try:
+        d = json.loads(p.read_text())
+        clin = d.get("coalitions", {}).get("clinical", {})
+        return {
+            "auroc": clin.get("auroc_mean"),
+            "ci95": clin.get("delong_ci95_seed0"),
+            "n": d.get("n_intersection"),
+            "source": "reports/G2_imaging/MODALITY_AUDIT/metrics.json :: coalitions.clinical (H6 ablation-ladder LogReg)",
+        }
+    except (json.JSONDecodeError, KeyError):  # pragma: no cover
+        return {"auroc": None, "ci95": None, "n": None, "source": "H6 metrics unreadable"}
+
+
+def build_external_matrix(cfg: dict, duke_maps: dict, cards: list[int]):
+    """Assemble the ISPY2 external (X_num, X_cat, y) via the parity crosswalk. Duke-code space.
+
+    Returns (x_num[n,4], x_cat[n,5], y[n], meta). Column order MATCHES clinical_encoder.FEATURES_NUM /
+    FEATURES_CAT so the state bundle's per-feature stats align positionally."""
+    m = pd.read_excel(ROOT / cfg["external_table"])
+    m["_pid"] = m["patient_id"].astype(str)
+    clean = {ln.strip() for ln in (ROOT / cfg["clean_ids"]).read_text().splitlines() if ln.strip()}
+    coh = m[(m["dataset"] == cfg["cohort"]) & (m["_pid"].isin(clean))].copy()
+
+    label_map = cfg["label_map"]
+    sub = coh[cfg["subtype_col"]].astype(str).str.strip().str.lower()
+    in_contrast = sub.isin(label_map.keys())
+    coh, sub = coh[in_contrast], sub[in_contrast]
+    y = sub.map(label_map).astype(int).to_numpy()
+
+    n = len(coh)
+    # --- numeric (order = FEATURES_NUM): T, N, Nottingham grade, age ---
+    def get_num(col_name):
+        return pd.to_numeric(coh[col_name], errors="coerce").to_numpy(float) if col_name in coh else np.full(n, np.nan)
+
+    x_num = np.column_stack([
+        np.full(n, np.nan),                         # Staging(Tumor Size) [T] — absent -> Duke-median impute
+        np.full(n, np.nan),                         # Staging(Nodes) [N]      — absent -> Duke-median impute
+        get_num("nottingham_grade"),                # present-but-all-null in ISPY2 -> Duke-median impute
+        get_num("age"),                             # age — the one populated numeric
+    ])
+
+    # --- categorical (order = FEATURES_CAT): Menopause, Ethnicity, Multicentric, Metastatic, Lymphadenopathy ---
+    meno_duke = coh["menopause"].map(_norm_meno) if "menopause" in coh else pd.Series(np.nan, index=coh.index)
+    eth_duke = coh["ethnicity"].map(_norm_eth) if "ethnicity" in coh else pd.Series(np.nan, index=coh.index)
+    multi_duke = pd.to_numeric(coh["multifocal_cancer"], errors="coerce") if "multifocal_cancer" in coh else pd.Series(np.nan, index=coh.index)
+
+    def to_code(duke_level_series, feat_name):
+        mp = duke_maps[feat_name]
+        return np.array([mp.get(float(v), 0) if pd.notna(v) else 0 for v in duke_level_series], dtype=int)
+
+    x_cat = np.column_stack([
+        to_code(meno_duke, "Menopause (at diagnosis)"),
+        to_code(eth_duke, "Race and Ethnicity"),
+        to_code(multi_duke, "Multicentric/Multifocal"),
+        np.zeros(n, dtype=int),   # Metastatic at Presentation — absent -> OOV code 0
+        np.zeros(n, dtype=int),   # Lymphadenopathy — absent -> OOV code 0
+    ])
+
+    meta = {
+        "n_ispy2_balanced": int(n),
+        "n_luma": int((y == 0).sum()),
+        "n_tnbc": int((y == 1).sum()),
+        "tnbc_prevalence": round(float(y.mean()), 4),
+        "pids": [str(p) for p in coh["_pid"].tolist()],
+    }
+    return x_num, x_cat, y, meta
+
+
+def feature_parity_audit(x_num, x_cat, y, cfg) -> dict:
+    """The E1 feature-parity audit log: per Duke feature — mapped/absent + external non-null count."""
+    num_names = list(ce.FEATURES_NUM)
+    cat_names = list(ce.FEATURES_CAT)
+    audit = {"numeric": {}, "categorical": {}, "forbidden_features_excluded": sorted(FORBIDDEN_FEATURES)}
+    for j, name in enumerate(num_names):
+        present = int(np.isfinite(x_num[:, j]).sum())
+        audit["numeric"][name] = {
+            "external_non_null": present,
+            "of": int(len(y)),
+            "imputed_with": "duke_train_median" if present < len(y) else "none",
+        }
+    for j, name in enumerate(cat_names):
+        # code 0 = OOV (absent/unmapped/unseen); >0 = a Duke code hit.
+        mapped = int((x_cat[:, j] > 0).sum())
+        audit["categorical"][name] = {
+            "external_mapped_to_duke_code": mapped,
+            "of": int(len(y)),
+            "oov_or_absent": int((x_cat[:, j] == 0).sum()),
+        }
+    audit["features_mappable"] = sum(
+        1 for j, _ in enumerate(num_names) if np.isfinite(x_num[:, j]).any()
+    ) + sum(1 for j, _ in enumerate(cat_names) if (x_cat[:, j] > 0).any())
+    audit["features_total"] = len(num_names) + len(cat_names)
+    return audit
+
+
+def run(config_path: Path) -> dict:
+    cfg = yaml.safe_load(config_path.read_text())
+
+    # 1) Duke dev cohort (the training set for the full-dev re-fit) + internal number for Δ.
+    ce._assert_leak_free()  # LOCK-2: forbidden fields never in FEATURES
+    x_num_d, x_cat_d, y_d, groups_d, cards = ce.load_xy(
+        ROOT / cfg["duke_clinical_table"], ROOT / cfg["duke_split"]
+    )
+    # ESTIMATOR (G5 re-run 25-07-26): the H6 COALITION estimator — LogReg(C=1.0, max_iter=1000) +
+    # OneHot(handle_unknown=ignore) — NOT the FT-Transformer. The clinical-subtype HEADLINE is
+    # 0.708 = the H6 ablation-ladder LogReg (reports/G2_imaging/MODALITY_AUDIT: clinical coalition
+    # AUROC 0.708 on the N=613 3-way imaging intersection). The prior G5 leg used the FTT (internal
+    # ~0.634) which sits UNDER a LogReg headline -> apples-to-oranges. We now measure LogReg-internal
+    # -> LogReg-external so Δ is matched to the 0.708 anchor.
+    internal = ce.logreg_cross_val_auroc(x_num_d, x_cat_d, y_d, groups_d, cards)
+    # Estimator-consistency for Δ: the external AUROC is ONE pooled DeLong AUROC over 739 patients, so
+    # the correct internal comparator is the LogReg pooled-OOF on the SAME cohort the external model
+    # re-fits on = ALL Duke-dev (N=624). NOTE (N nuance, plan requirement): the 0.708 CLAUDE.md anchor
+    # is the H6 LogReg on the N=613 3-way (clinical∩radiomics∩MRI) intersection; this full-dev LogReg
+    # (N=624) is the estimator-consistent Δ basis. Both are reported so Δ is honest and matched.
+    internal_auroc = internal["auroc_pooled_oof_mean"]        # LogReg pooled-OOF on FULL dev (N=624) — Δ basis
+    # H6 anchor (N=613 intersection) — read from the modality-audit metrics for reconciliation, NOT re-run.
+    h6_anchor = _read_h6_clinical_anchor()
+
+    # 2) Persist / reuse the Duke-TRAIN impute stats artifact (E1). Generated from dev if absent.
+    stats_path = ROOT / cfg["impute_stats_artifact"]
+    if not stats_path.exists():
+        ce.save_impute_stats(x_num_d, x_cat_d, groups_d, cards, stats_path)
+
+    # 3) Duke-dev factorize crosswalk (raw level -> model code), then build the ISPY2 matrix.
+    duke_maps = _duke_factorize_maps(ROOT / cfg["duke_clinical_table"], ROOT / cfg["duke_split"])
+    x_num_e, x_cat_e, y_e, meta = build_external_matrix(cfg, duke_maps, cards)
+    parity = feature_parity_audit(x_num_e, x_cat_e, y_e, cfg)
+
+    # 4) Fit on FULL dev per seed, apply once to ISPY2, collect per-seed external AUROC + CI.
+    seeds = cfg.get("seeds", [0, 1, 2])
+    ext_aucs, ext_cis, shuffle_aucs = {}, {}, {}
+    rng = np.random.default_rng(cfg.get("shuffle_seed", 0))
+    probs_by_seed = {}
+    for seed in seeds:
+        state = ce.fit_logreg_on_full_dev(x_num_d, x_cat_d, y_d, cards, seed)
+        probs = ce.predict_logreg_with_state(state, x_num_e, x_cat_e)
+        probs_by_seed[str(seed)] = probs.tolist()
+        auc, lo, hi = delong_ci(y_e, probs)
+        ext_aucs[str(seed)], ext_cis[str(seed)] = round(auc, 4), [round(lo, 4), round(hi, 4)]
+        # label-shuffle sentinel: permute external labels, re-score the SAME probs -> chance.
+        y_shuf = rng.permutation(y_e)
+        s_auc, _, _ = delong_ci(y_shuf, probs)
+        shuffle_aucs[str(seed)] = round(s_auc, 4)
+
+    ext_mean = float(np.mean(list(ext_aucs.values())))
+    shuffle_mean = float(np.mean(list(shuffle_aucs.values())))
+    # mean CI across seeds (each seed's preds independent within its own external application)
+    ci_lo = round(float(np.mean([c[0] for c in ext_cis.values()])), 4)
+    ci_hi = round(float(np.mean([c[1] for c in ext_cis.values()])), 4)
+
+    # 5) ISPY1/NACT TNBC-only sanity note (reported SEPARATELY, never pooled — LOCK-2).
+    sanity = _tnbc_only_sanity(cfg, duke_maps, cards, seeds)
+
+    out = {
+        "gate": "G5-leg1",
+        "cohort": cfg["cohort"],
+        "framing": "per-cohort external robustness / honesty pass — report the drop; NOT a cross-institution generalisation claim (LOCK-1)",
+        "auroc": round(ext_mean, 4),                       # ISPY2 external AUROC (3-seed mean)
+        "auroc_per_seed": ext_aucs,
+        "delong_ci": [ci_lo, ci_hi],                       # mean 95% DeLong CI across seeds
+        "delong_ci_per_seed": ext_cis,
+        "internal_auroc_logreg_full_dev_pooled_oof": round(float(internal_auroc), 4),  # N=624, Δ basis
+        "internal_auroc_logreg_full_dev_ci95_mean": internal["delong_ci95_mean"],
+        "internal_auroc_logreg_full_dev_per_seed": internal["auroc_pooled_oof_per_seed"],
+        "internal_auroc_h6_anchor_n613_intersection": h6_anchor["auroc"],  # the 0.708 CLAUDE.md headline
+        "internal_auroc_h6_anchor_ci95": h6_anchor["ci95"],
+        "internal_auroc_h6_anchor_n": h6_anchor["n"],
+        "delta_internal_external": round(float(internal_auroc) - ext_mean, 4),  # PRIMARY drop Δ (LogReg full-dev internal vs LogReg pooled external)
+        "delta_internal_external_h6_anchor_basis": round(float(h6_anchor["auroc"]) - ext_mean, 4) if h6_anchor["auroc"] is not None else None,
+        "internal_estimator_note": (
+            "ESTIMATOR = H6 coalition LogReg(C=1.0, max_iter=1000) + OneHot(handle_unknown=ignore) — "
+            "the ablation-ladder estimator that produces the 0.708 clinical-subtype headline. PRIMARY Δ "
+            "= LogReg pooled-OOF internal on FULL Duke-dev (N=624, estimator-consistent with the single "
+            "pooled external DeLong AUROC over 739). N nuance (plan requirement): the 0.708 CLAUDE.md "
+            "anchor is the SAME LogReg on the N=613 3-way (clinical∩radiomics∩MRI) imaging intersection "
+            "(reports/G2_imaging/MODALITY_AUDIT/metrics.json); the full-dev value differs only by cohort "
+            "N. Both Δ bases are reported. This REPLACES the prior FTT G5 leg (internal ~0.634 -> ext "
+            "0.525) which mismatched the LogReg headline (apples-to-oranges)."
+        ),
+        "shuffle_auroc": round(shuffle_mean, 4),           # sentinel beside the external number
+        "shuffle_auroc_per_seed": shuffle_aucs,
+        "seeds": list(seeds),
+        "n_ispy2": meta,
+        "feature_parity_audit": parity,
+        "tnbc_only_sanity_separate": sanity,
+        "model": "clinical LogReg(C=1.0, max_iter=1000) + OneHot(handle_unknown=ignore) [H6 coalition estimator], re-fit on full Duke-dev (E2: no saved checkpoint; deterministic re-fit)",
+        "prior_leg_estimator": "FT-Transformer (n_blocks=2) — SUPERSEDED by this LogReg re-run (25-07-26); the FTT internal ~0.634 mismatched the 0.708 LogReg headline",
+        "impute_stats_artifact": str(stats_path.relative_to(ROOT)),
+        "impute_stats_source": "duke_dev_full (LOCK-2: no external stats fit)",
+        "integrity_note": (
+            f"{parity['features_mappable']}/{parity['features_total']} Duke features have any ISPY2 "
+            "signal; the remaining features are Duke-train-imputed (numeric) or OOV (categorical). "
+            "The external number therefore leans on the mappable features (age, menopause, ethnicity, "
+            "multifocal); Nottingham grade + staging/nodal/metastatic fields are absent in ISPY2. "
+            "This is honest per-cohort robustness, not a generalisation claim."
+        ),
+    }
+
+    out_path = ROOT / cfg["out_metrics"]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(out, indent=2) + "\n")
+    # also drop per-seed external probs next to metrics (reproducibility)
+    np.savez(out_path.parent / "ispy2_external_probs.npz",
+             pids=np.array(meta["pids"], dtype=object), y=y_e,
+             **{f"probs_seed{s}": np.asarray(p) for s, p in probs_by_seed.items()})
+    return out
+
+
+def _tnbc_only_sanity(cfg, duke_maps, cards, seeds) -> dict:
+    """ISPY1/NACT are TNBC-only. Report the model's mean P(TNBC) on them as a separate directional
+    note — NOT an AUROC (a single-class set has no AUROC). NEVER pooled into the ISPY2 balanced number."""
+    m = pd.read_excel(ROOT / cfg["external_table"])
+    m["_pid"] = m["patient_id"].astype(str)
+    clean = {ln.strip() for ln in (ROOT / cfg["clean_ids"]).read_text().splitlines() if ln.strip()}
+    # re-fit once (seed 0) to score the sanity cohorts (mean prob only) — H6 LogReg estimator.
+    x_num_d, x_cat_d, y_d, _g, _c = ce.load_xy(ROOT / cfg["duke_clinical_table"], ROOT / cfg["duke_split"])
+    state = ce.fit_logreg_on_full_dev(x_num_d, x_cat_d, y_d, cards, 0)
+    notes = {}
+    for ds in cfg.get("sanity_cohorts_tnbc_only", []):
+        d = m[(m["dataset"] == ds) & (m["_pid"].isin(clean))].copy()
+        sub = d[cfg["subtype_col"]].astype(str).str.strip().str.lower()
+        d = d[sub == "triple_negative"]
+        if len(d) == 0:
+            notes[ds] = {"n_tnbc": 0}
+            continue
+        cfg_local = dict(cfg, cohort=ds)
+        xn, xc, yy, meta = build_external_matrix(cfg_local, duke_maps, cards)
+        probs = ce.predict_logreg_with_state(state, xn, xc)
+        notes[ds] = {
+            "n_tnbc": int(len(yy)),
+            "mean_p_tnbc": round(float(np.mean(probs)), 4),
+            "note": "TNBC-only (no LumA) — directional mean P(TNBC), NOT an AUROC; NEVER pooled (LOCK-2 cohort-shortcut guard).",
+        }
+    return notes
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", type=Path, default=ROOT / "configs/g5_external_ispy2.yaml")
+    args = ap.parse_args()
+    if not (ROOT / "data/mamma_mia/clinical_and_imaging_info.xlsx").exists():
+        print("[g5-external] AWAITING DATA — data/mamma_mia/ not present (gitignored).")  # noqa: T201
+        return 0
+    out = run(args.config)
+    print(json.dumps(out, indent=2))  # noqa: T201
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
