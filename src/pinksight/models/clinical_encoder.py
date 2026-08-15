@@ -26,7 +26,7 @@ pooled-OOF 0.598→0.644, EXP-002→EXP-003, age held fixed). Its mitotic compon
 do NOT reuse it naively in the Ki-67 head
 (closer to circular there); it is clean for the ER/PR/HER2-defined subtype task. See decisions.md.
 
-Numbers are reported per CLAUDE.md's eval rule — never bare: multi-seed spread + per-seed pooled
+Numbers are reported per docs/CLAIM_LEDGER.md's eval rule — never bare: multi-seed spread + per-seed pooled
 out-of-fold AUROC with a DeLong 95% CI + ECE calibration (closes red-team M1, see metrics module).
 
 torch/sklearn are imported LAZILY inside the training fns so `tests/test_leakage.py` can pull
@@ -69,7 +69,7 @@ FEATURES = FEATURES_NUM + FEATURES_CAT  # the classifier's full input set — gu
 
 # Duke "Mol Subtype": 0 = luminal-like (neg class), 3 = TNBC (pos class). 1,2 out of LOCK-3 scope.
 _LABEL = {0: 0, 3: 1}
-SEEDS = (0, 1, 2)  # 3 = the eval-integrity minimum (CLAUDE.md "multi-seed spread 3 min / 5 target")
+SEEDS = (0, 1, 2)  # 3 = the eval-integrity minimum (docs/CLAIM_LEDGER.md "multi-seed spread 3 min / 5 target")
 N_SPLITS = 5
 
 
@@ -741,7 +741,7 @@ def run(clin_path: Path, split_yaml: Path, reports: Path) -> dict:
             "grade = composite Nottingham grade (was mis-wired to the col-31 Tubule sub-score), "
             "67% collected → train-fold median-imputed, at-diagnosis biopsy-derived, label-safe; "
             "continuous tumour-size-cm dropped (90/922 collected, rest 'NC'). AUROC reported with "
-            "DeLong 95% CI + ECE (CLAUDE.md eval rule)."
+            "DeLong 95% CI + ECE (docs/CLAIM_LEDGER.md eval rule)."
         ),
         gate="G2",
     )

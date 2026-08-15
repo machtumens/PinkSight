@@ -24,7 +24,7 @@ unaffordable. This is a real, judge-visible inconsistency — record it, do not 
 ## Decision
 <PENDING — to be ratified at **G2** against the unimodal-encoder number (**LOCK-4**, the G2 row).
 Recommended default: Option 1 (3D-ResNet-18 + MedicalNet), which is also the encoder named in
-`CLAUDE.md`. Escalate to Option 3 only if the G2 number fails to beat the radiomics baseline and the
+the project's top-level spec. Escalate to Option 3 only if the G2 number fails to beat the radiomics baseline and the
 remaining budget against the **LOCK-5** cap allows.>
 
 ## Consequences

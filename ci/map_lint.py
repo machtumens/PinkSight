@@ -42,7 +42,7 @@ COMMIT_RE = re.compile(r"Built from commit `([0-9a-f]{7,40})`")
 def _clean(part: str) -> str:
     """Strip decoration a human added around a path: backticks, prose tails, §refs."""
     part = part.strip().strip("`").strip()
-    # Cut prose tails: "decisions.md:43 — LOCK-1", "CLAUDE.md §Targets"
+    # Cut prose tails: "decisions.md:43 — LOCK-1", "CLAIM_LEDGER.md §Targets"
     for sep in (" —", " -", " §", " ("):
         if sep in part:
             part = part.split(sep, 1)[0]
@@ -145,11 +145,11 @@ def _selfcheck() -> None:
         root = Path(d)
         (root / MAP_DIR).mkdir(parents=True)
         (root / "real.md").write_text("a\nb\nc\n")
-        (root / "CLAUDE.md").write_text("x\n")  # bare-path cite: exists, must not flag
+        (root / "CLAIM_LEDGER.md").write_text("x\n")  # bare-path cite: exists, must not flag
         (root / MAP_DIR / "e1-x.md").write_text("ok\n")
         (root / MAP_DIR / MASTER).write_text(
             "good (src: real.md:2) and range (src: `real.md:1-3` — note)\n"
-            "prose-only (src: CLAUDE.md §Targets) and ellipsis (src: …)\n"
+            "prose-only (src: CLAIM_LEDGER.md §Targets) and ellipsis (src: …)\n"
             "link [x](e1-x.md)\n"
             "past-eof (src: real.md:99)\n"
             "no-file (src: ghost.md:1)\n"
@@ -160,7 +160,7 @@ def _selfcheck() -> None:
         assert any("ghost.md" in p for p in problems), f"missed missing file: {problems}"
         assert any("e9-nope.md" in p for p in problems), f"missed dead link: {problems}"
         assert not any(":1:" in p for p in problems), f"false positive on line 1: {problems}"
-        assert not any("CLAUDE.md" in p for p in problems), f"flagged a §section ref: {problems}"
+        assert not any("CLAIM_LEDGER.md" in p for p in problems), f"flagged a §section ref: {problems}"
         assert len(problems) == 3, f"expected exactly 3 problems, got: {problems}"
         # The tempdir is not a git checkout, so the stamp cannot be verified. That must come
         # back as None (-> exit 1), never as an empty list (-> "clean"). This is the guard on

@@ -184,7 +184,7 @@ proliferation-vs-kinetics boundary ([1.2-R], ADR-0002).
   spread ≥3 (5 target); (5) a permuted-label negative control that collapses to ~0.50. A submission
   mention that drops ANY of these five, or drops the "CI crosses 0.50 / near-null" caveat, is a
   framing-guard breach and is not shippable.
-- **Spine files DEFERRED to ratification.** `decisions.md`, `JOURNAL.md`, `CLAUDE.md` architecture,
+- **Spine files DEFERRED to ratification.** `decisions.md`, `JOURNAL.md`, `docs/architecture/pinksight_system_architecture.md`,
   and the claim ledger are NOT edited by this ADR. They wire in only via the Ratification block below,
   and only after Richard signs. Until then LOCK-1 stands as written and `explore/tabular_duke/` remains
   OFF-LEDGER with no LOCK moved.
@@ -202,7 +202,7 @@ ratification.** On ratification, wire (in this order):
 1. **`decisions.md`** — a dated changelog append (LAW L-1: reason · downstream impact · approver)
    referencing this ADR, narrowing LOCK-1's ALLOWED framings to include "at-diagnosis recurrence
    stratification / baseline-feature risk characterisation" and recording the framing guard verbatim.
-2. **Architecture section** (`CLAUDE.md` / decisions.md architecture) — add the standalone
+2. **Architecture section** (`docs/architecture/pinksight_system_architecture.md` / decisions.md architecture) — add the standalone
    clinical-tabular recurrence-stratification organ alongside the FT-Transformer clinical branch, with
    the standalone-first / optional-G3-stream staging.
 3. **`JOURNAL.md`** — a dated entry recording the amendment and the organ's admission.
@@ -234,7 +234,7 @@ Until all four are done, this ADR is a PROPOSED draft only, LOCK-1 stands as wri
 
 Written as a PROPOSED decision record with the Duke number KNOWN and recorded un-spun (AUROC 0.577,
 CI [0.482, 0.614] crossing 0.50, 87/920 events). No live spine file touched — `decisions.md`,
-`JOURNAL.md`, `CLAUDE.md`, and the claim ledger all await Richard's explicit ratification per the
+`JOURNAL.md`, `docs/architecture/pinksight_system_architecture.md`, and the claim ledger all await Richard's explicit ratification per the
 Ratification block. The `explore/tabular_duke/` sandbox remains OFF-LEDGER; no LOCK has moved.
 
 ## Status update — 2026-07-13 (RATIFIED)
@@ -244,7 +244,7 @@ with the near-null result (AUROC 0.577, CI [0.482, 0.614] crossing 0.50, 87/920 
 #1-integrity-exposure risk (recurrence/kinetics framing, flagged by council + red-team) recorded
 and accepted with eyes open. Wiring completed on ratification: (1) `decisions.md` — dated changelog
 append additively amending LOCK-1's ALLOWED list (framing guard recorded verbatim; no FORBIDDEN
-entry removed; LOCK-2 untouched); (2) `CLAUDE.md` architecture — the standalone clinical-tabular
+entry removed; LOCK-2 untouched); (2) `docs/architecture/pinksight_system_architecture.md` — the standalone clinical-tabular
 recurrence-stratification organ added as a clinical-stream companion head (NOT fused into the
 imaging encoder), standalone-first per this ADR; (3) `JOURNAL.md` — dated entry recording the
 amendment + the organ's admission. Origin sandbox `explore/tabular_duke/` is now the organ's methods

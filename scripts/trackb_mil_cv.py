@@ -2,7 +2,7 @@
 
 Patient-level 5-fold StratifiedGroupKFold CV over frozen tile-embedding bags using
 GatedAttentionMIL -> TrackBSubtypeHead with a class-weighted BCE loss (~2.9:1 LumA:Basal). Runs
-across >=3 seeds ([BOUND-F3], CLAUDE.md eval standard: 3 min / 5 target), pools the per-seed OOF
+across >=3 seeds ([BOUND-F3], docs/CLAIM_LEDGER.md eval standard: 3 min / 5 target), pools the per-seed OOF
 scores, and reports pooled-OOF AUROC + 95% DeLong CI + ECE + per-seed spread + a label-shuffle
 leakage sentinel. Writes a JSON result artifact.
 
@@ -71,7 +71,7 @@ _LR = 1e-3
 # INFERRED from the loaded bags at runtime, so this constant is the documented expectation for the
 # real-bag run — the .h5 path resolves to 1536 and the legacy path to 768 automatically.
 _IN_DIM = 1536
-_SEEDS_DEFAULT = "0,1,2"  # [BOUND-F3] >=3 seeds required (CLAUDE.md: DeLong CI + ECE + multi-seed)
+_SEEDS_DEFAULT = "0,1,2"  # [BOUND-F3] >=3 seeds required (docs/CLAIM_LEDGER.md: DeLong CI + ECE + multi-seed)
 _SHUFFLE_SENTINEL_MAX = 0.60
 _FRAMING = "methods-rigour result only — NOT headline claim"
 
@@ -238,7 +238,7 @@ def run_cv_multiseed(
     seeds = list(seeds)
     if len(seeds) < 3:
         raise ValueError(
-            f"[BOUND-F3] >=3 seeds required (CLAUDE.md eval standard: 3 min / 5 target); got {seeds}"
+            f"[BOUND-F3] >=3 seeds required (docs/CLAIM_LEDGER.md eval standard: 3 min / 5 target); got {seeds}"
         )
 
     patients, labels, bags = load_bags(bags_dir, manifest, legacy_titan=legacy_titan)

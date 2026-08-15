@@ -496,7 +496,7 @@ def protein_pam50_axis(protein: pd.DataFrame) -> pd.Series:
 # ==================================================================================================
 @dataclass
 class FloorResult:
-    """Reportable aggregate for the arm-8 floor gate — never a bare number (CLAUDE.md rule).
+    """Reportable aggregate for the arm-8 floor gate — never a bare number (docs/CLAIM_LEDGER.md rule).
 
     `pearson_r` is the point Pearson correlation between the per-patient discordance burden and the
     continuous PAM50 axis on the full matched cohort. `boot_ci95` is the seed-MEAN of per-seed bootstrap

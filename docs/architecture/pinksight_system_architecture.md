@@ -65,7 +65,7 @@ placed in side-by-side columns**; no cross-institution juxtaposition or transfer
 
 | cohort | modalities | harness | dispatcher status | note |
 |---|---|---|---|---|
-| duke | mri + clinical | `scripts/train_g3_hierarchical.py` | WIRED | G3 hierarchical fusion + MoE (BUILT; see decisions.md / CLAUDE.md current gate) |
+| duke | mri + clinical | `scripts/train_g3_hierarchical.py` | WIRED | G3 hierarchical fusion + MoE (BUILT; see decisions.md / docs/CLAIM_LEDGER.md gate spine) |
 | duke | clinical | — | NOT WIRED | E9 (04-08-26): `train_imaging_mvp.py` is pure-imaging with no `--clinical-only-path` flag; no clinical-only Duke *training* entrypoint exists — backlog |
 | duke | clinical + recurrence | — | NOT WIRED | ADR-0006 clinical-companion recurrence-stratification organ has no standalone `scripts/` entrypoint — backlog |
 

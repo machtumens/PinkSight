@@ -12,7 +12,7 @@ Richard's instruction (2026-07-15): *"I don't think it's a null. Put it as part 
 
 The G3 fusion bundle (hierarchical staged fusion #4 + biology-gated MoE #7 + counterfactual XAI #3) ran end-to-end and is committed. The committed decisions.md entry headlines it as an HONEST-NULL. This ADR asks whether that headline can be changed to position G3 as a **delivered architecture contribution with a forward v2.0 data-hypothesis**, rather than as a null.
 
-The claim ledger (LOCK-1) and the guard note in CLAUDE.md warn that the *natural* way to describe imaging work drifts toward forbidden framing ("needs better data" → implies signal exists → implies detection). So this reframe is a claim-ledger surface and gets an ADR + red-team pass before any record changes — exactly the ADR-0006 discipline.
+The claim ledger (LOCK-1) and the guard note in docs/CLAIM_LEDGER.md warn that the *natural* way to describe imaging work drifts toward forbidden framing ("needs better data" → implies signal exists → implies detection). So this reframe is a claim-ledger surface and gets an ADR + red-team pass before any record changes — exactly the ADR-0006 discipline.
 
 ---
 
@@ -114,14 +114,14 @@ By signing, Richard confirms he has read **"What this ADR does NOT do"** and the
 
 - [x] Richard — 2026-07-16 — **ratified: reframe G3 headline per this ADR (positioning only; asserts no imaging signal)**
 
-On ratification: flip Status to ACCEPTED; append a dated status block; update the `[G3-FUSION-ARCH-BUNDLE]` decisions.md entry's *headline* (not its numbers) to the architecture-forward framing; update CLAUDE.md § Current gate accordingly.
+On ratification: flip Status to ACCEPTED; append a dated status block; update the `[G3-FUSION-ARCH-BUNDLE]` decisions.md entry's *headline* (not its numbers) to the architecture-forward framing; update the project's current-gate status accordingly.
 
 ---
 
 ## Status update — 2026-07-15 (draft written; awaiting Richard)
 
-Drafted with red-team pass folded in. The maximum defensible claim is: *a validated, leakage-safe fusion architecture (methods contribution); imaging adds no separable subtype signal beyond clinical on the Duke cohort (characterised ceiling, #4 CI crosses 0.50); v2.0 hypothesis to test where imaging signal is demonstrable.* Not ratified. No decisions.md / CLAUDE.md / gate edits made pending Richard's signature.
+Drafted with red-team pass folded in. The maximum defensible claim is: *a validated, leakage-safe fusion architecture (methods contribution); imaging adds no separable subtype signal beyond clinical on the Duke cohort (characterised ceiling, #4 CI crosses 0.50); v2.0 hypothesis to test where imaging signal is demonstrable.* Not ratified. No decisions.md / docs/CLAIM_LEDGER.md / gate edits made pending Richard's signature.
 
 ## Status update — 2026-07-16 (RATIFIED)
 
-Richard ratified as drafted. Status ACCEPTED. Applied this session: (a) decisions.md `[G3-FUSION-ARCH-BUNDLE]` headline reframed via a dated append (LAW L-1 — original honest-null entry preserved byte-for-byte, numbers unchanged); (b) CLAUDE.md § Current gate updated to architecture-forward framing with the #4 CI-crosses-0.50 caveat retained. The "What this ADR does NOT do" firewall and the framing guard are in force for every G3 mention.
+Richard ratified as drafted. Status ACCEPTED. Applied this session: (a) decisions.md `[G3-FUSION-ARCH-BUNDLE]` headline reframed via a dated append (LAW L-1 — original honest-null entry preserved byte-for-byte, numbers unchanged); (b) the project's current-gate status updated to architecture-forward framing with the #4 CI-crosses-0.50 caveat retained. The "What this ADR does NOT do" firewall and the framing guard are in force for every G3 mention.

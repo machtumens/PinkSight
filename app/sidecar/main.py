@@ -30,7 +30,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 from pinksight_dispatch import dispatch  # noqa: E402 — sys.path injected just above
 
-# Forbidden framing from CLAUDE.md claim ledger. Substring match, case-insensitive.
+# Forbidden framing from docs/CLAIM_LEDGER.md claim ledger. Substring match, case-insensitive.
 FORBIDDEN_TERMS = [
     "early detection",
     "pre-detection",

@@ -1,4 +1,4 @@
-"""P08 classification + Ki-67 metrics, each carrying a 95% CI (CLAUDE.md: never a bare number).
+"""P08 classification + Ki-67 metrics, each carrying a 95% CI (docs/CLAIM_LEDGER.md: never a bare number).
 
 EXTENDS pinksight.metrics (DeLong CI + ECE) — does not duplicate it. AUROC keeps the locked
 DeLong CI; every other metric gets a paired patient bootstrap so all reported numbers have an

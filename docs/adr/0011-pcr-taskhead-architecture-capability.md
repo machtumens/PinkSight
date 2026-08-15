@@ -97,8 +97,8 @@ NOT performance, NOT generalisation.
 
 Proposed 2026-07-23. /red-team verdict: **BLOCK → PASS** conditional on 5 fixes — all
 folded into the Decision above. PI ratified 2026-07-23 (session directive: "fold 5 fixes
-and ratify for pinksight integration"). On acceptance: decisions.md appended, CLAUDE.md
-architecture line updated with the deferred slot, memory captured. Reopening to attach
+and ratify for pinksight integration"). On acceptance: decisions.md appended,
+`docs/architecture/pinksight_system_architecture.md` updated with the deferred slot, memory captured. Reopening to attach
 real weights requires a NEW ADR + fresh /red-team + a matched cohort.
 
 Signed: Richard (PI), 2026-07-23   Red-team verdict: PASS (post-fix), 2026-07-23

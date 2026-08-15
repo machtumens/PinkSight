@@ -23,7 +23,7 @@ DESIGN (composes with the existing stack, does NOT rewrite it):
                          TNBC prev ~0.21). This is the CHARACTERISATION head (Luminal-like vs TNBC).
       Head 2 Ki-67    -> Linear(embed_dim, 1), Huber regression toward the Ki-67 index AT DIAGNOSIS
                          (binary decision @14% is downstream, not here). This head is a PLACEHOLDER:
-                         Ki-67 labels are N=0 in the dev cohort (see CLAUDE.md current gate, G0
+                         Ki-67 labels are N=0 in the dev cohort (see docs/DATA_CARD.md, G0
                          Ki-67 N=0), so it stays DESCRIPTIVE / UNTRAINED — the loss is defined and
                          wired but contributes nothing until Ki-67 labels exist. It is NOT growth
                          rate / kinetics (claim ledger): Ki-67 is a proliferation snapshot at

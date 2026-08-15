@@ -1,6 +1,6 @@
-"""Eval metrics that turn a bare AUROC into a reportable number (CLAUDE.md eval rule).
+"""Eval metrics that turn a bare AUROC into a reportable number (docs/CLAIM_LEDGER.md eval rule).
 
-CLAUDE.md: "Report AUROC with DeLong CI + ECE + multi-seed spread — never a bare number."
+docs/CLAIM_LEDGER.md: "Report AUROC with DeLong CI + ECE + multi-seed spread — never a bare number."
 This module is the DeLong-CI + ECE half (the multi-seed half lives in the model's CV loop).
 Closes red-team M1 (`reports/redteam/redteam_G2.md`): the P05 floor shipped without a CI/calibration.
 
@@ -116,7 +116,7 @@ def delong_paired(y_true, score_a, score_b) -> dict:
 def ece(y_true, y_prob, n_bins: int = 10) -> float:
     """Expected Calibration Error: |confidence − accuracy| over equal-width bins, size-weighted.
 
-    The CLAUDE.md calibration number (ECE ≤ 0.05 good / ≤ 0.10 acceptable). 0 = perfectly
+    The docs/CLAIM_LEDGER.md calibration number (ECE ≤ 0.05 good / ≤ 0.10 acceptable). 0 = perfectly
     calibrated. Bins on [0,1]; empty bins contribute nothing.
     """
     y_true = np.asarray(y_true, float)

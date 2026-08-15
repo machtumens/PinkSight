@@ -134,7 +134,7 @@ def _duke_factorize_maps(clin_path: Path, split_yaml: Path) -> dict[str, dict[fl
 def _read_h6_clinical_anchor() -> dict:
     """Read the H6 clinical-alone coalition AUROC (the 0.708 headline) from the modality-audit metrics.
 
-    The CLAUDE.md clinical-subtype headline IS the H6 ablation-ladder LogReg clinical coalition on the
+    The clinical-subtype headline IS the H6 ablation-ladder LogReg clinical coalition on the
     N=613 3-way (clinical∩radiomics∩MRI) imaging intersection. We read it here (not re-run) so the
     external Δ can be reconciled against the exact published anchor with its own N. Returns
     {auroc, ci95, n, source} — auroc=None if the audit metrics are absent/not OK (fail-soft)."""
@@ -253,7 +253,7 @@ def run(config_path: Path) -> dict:
     internal = ce.logreg_cross_val_auroc(x_num_d, x_cat_d, y_d, groups_d, cards)
     # Estimator-consistency for Δ: the external AUROC is ONE pooled DeLong AUROC over 739 patients, so
     # the correct internal comparator is the LogReg pooled-OOF on the SAME cohort the external model
-    # re-fits on = ALL Duke-dev (N=624). NOTE (N nuance, plan requirement): the 0.708 CLAUDE.md anchor
+    # re-fits on = ALL Duke-dev (N=624). NOTE (N nuance, plan requirement): the 0.708 clinical-subtype anchor
     # is the H6 LogReg on the N=613 3-way (clinical∩radiomics∩MRI) intersection; this full-dev LogReg
     # (N=624) is the estimator-consistent Δ basis. Both are reported so Δ is honest and matched.
     internal_auroc = internal["auroc_pooled_oof_mean"]        # LogReg pooled-OOF on FULL dev (N=624) — Δ basis
@@ -306,7 +306,7 @@ def run(config_path: Path) -> dict:
         "internal_auroc_logreg_full_dev_pooled_oof": round(float(internal_auroc), 4),  # N=624, Δ basis
         "internal_auroc_logreg_full_dev_ci95_mean": internal["delong_ci95_mean"],
         "internal_auroc_logreg_full_dev_per_seed": internal["auroc_pooled_oof_per_seed"],
-        "internal_auroc_h6_anchor_n613_intersection": h6_anchor["auroc"],  # the 0.708 CLAUDE.md headline
+        "internal_auroc_h6_anchor_n613_intersection": h6_anchor["auroc"],  # the 0.708 clinical-subtype headline
         "internal_auroc_h6_anchor_ci95": h6_anchor["ci95"],
         "internal_auroc_h6_anchor_n": h6_anchor["n"],
         "delta_internal_external": round(float(internal_auroc) - ext_mean, 4),  # PRIMARY drop Δ (LogReg full-dev internal vs LogReg pooled external)
@@ -315,7 +315,7 @@ def run(config_path: Path) -> dict:
             "ESTIMATOR = H6 coalition LogReg(C=1.0, max_iter=1000) + OneHot(handle_unknown=ignore) — "
             "the ablation-ladder estimator that produces the 0.708 clinical-subtype headline. PRIMARY Δ "
             "= LogReg pooled-OOF internal on FULL Duke-dev (N=624, estimator-consistent with the single "
-            "pooled external DeLong AUROC over 739). N nuance (plan requirement): the 0.708 CLAUDE.md "
+            "pooled external DeLong AUROC over 739). N nuance (plan requirement): the 0.708 clinical-subtype "
             "anchor is the SAME LogReg on the N=613 3-way (clinical∩radiomics∩MRI) imaging intersection "
             "(reports/G2_imaging/MODALITY_AUDIT/metrics.json); the full-dev value differs only by cohort "
             "N. Both Δ bases are reported. This REPLACES the prior FTT G5 leg (internal ~0.634 -> ext "

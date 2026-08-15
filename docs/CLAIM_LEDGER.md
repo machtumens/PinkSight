@@ -2,7 +2,7 @@
 
 > The scientific constitution for this submission: the allowed/forbidden claim boundary,
 > the evaluation-integrity rules, the gate spine, and the target metrics. Extracted verbatim
-> from the project's governing `CLAUDE.md` (the CLAIM LEDGER, Evaluation integrity, Gates, and
+> from the project's governing top-level spec (the CLAIM LEDGER, Evaluation integrity, Gates, and
 > Targets sections). Authority order: `decisions.md` > this ledger. Research posture — OPSI 2026
 > competition, not a clinical product.
 

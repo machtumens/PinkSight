@@ -27,13 +27,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedGroupKFold
 
-from pinksight.metrics import delong_ci, ece  # pure-numpy; never-a-bare-number reporting (CLAUDE.md)
+from pinksight.metrics import delong_ci, ece  # pure-numpy; never-a-bare-number reporting (docs/CLAIM_LEDGER.md)
 
 _CLASSIFIERS = {
     "logreg": lambda: LogisticRegression(max_iter=1000),
     "rf": lambda: RandomForestClassifier(n_estimators=300, random_state=0),
 }
-SEEDS = (0, 1, 2)  # eval-integrity minimum (CLAUDE.md "multi-seed spread 3 min / 5 target")
+SEEDS = (0, 1, 2)  # eval-integrity minimum (docs/CLAIM_LEDGER.md "multi-seed spread 3 min / 5 target")
 N_SPLITS = 5
 
 

@@ -108,14 +108,13 @@ _FORBIDDEN_HEADING = re.compile(
 # model_card.md enumerates the bans in its NOT-FOR disclaimer; the P16 governance
 # prompt is the reconciliation spec that names the whole DO-NOT list throughout.
 LEDGER_FILES = {
-    "CLAUDE.md",
     "decisions.md",
     "CHECKLISTS.md",
     "model_card.md",
     "MODEL_CARD_TEMPLATE.md",
     "P16_g0_governance_reconciliation.md",
-    # CLAIM_LEDGER.md DEFINES the forbidden terms in its own `**FORBIDDEN:**` bullets (same exempt
-    # class as CLAUDE.md's claim ledger) — quoting the bans to forbid them, never asserting them.
+    # CLAIM_LEDGER.md DEFINES the forbidden terms in its own `**FORBIDDEN:**` bullets (a ledger-
+    # defining file) — quoting the bans to forbid them, never asserting them.
     "CLAIM_LEDGER.md",
 }
 # Build/vendor/history dirs and the frozen archive — never part of the active claim surface.
@@ -188,7 +187,7 @@ def _is_negation_line(line: str) -> bool:
 def _is_adr_path(path: Path) -> bool:
     """`docs/adr/*` are decision-RECORD files. Each ADR's own firewall / NOT-FOR section quotes the
     banned terms precisely in order to FORBID or disclaim them — the same DEFINING role as
-    CLAIM_LEDGER.md / CLAUDE.md (whole-file exempt in LEDGER_FILES), never an ASSERTION of the
+    CLAIM_LEDGER.md (whole-file exempt in LEDGER_FILES), never an ASSERTION of the
     forbidden framing. Exempt by directory (not per-line) so a future ADR's firewall section does
     not need a `# allow-ledger` marker on every quoted ban. The prose firewall + human review
     remain primary (see module docstring): an ADR that made a genuine forbidden CLAIM would be

@@ -1,4 +1,4 @@
-"""DeLong CI + ECE (CLAUDE.md eval rule / red-team M1). Torch-free — pure numpy core suite."""
+"""DeLong CI + ECE (docs/CLAIM_LEDGER.md eval rule / red-team M1). Torch-free — pure numpy core suite."""
 
 import numpy as np
 
