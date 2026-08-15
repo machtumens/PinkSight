@@ -132,7 +132,9 @@ pip install -e '.[ml]'   && make demo   # unlock Tier-2 (Track-A / fastMRI-NYU) 
 make reproduce   # real-data path — needs cohorts placed per data/README.md (each under its own DUA)
 ```
 
-This repository ships **no patient data and no trained weights**. `make reproduce` reproduces only
+This repository's git tree ships **no patient data and no weight binaries** (the 15 G5 encoder
+weights are available separately as [GitHub Release assets](#model-weights)). `make reproduce`
+reproduces only
 the rungs whose producing code is in this repo — **G3** (Track-A Duke fusion), **G5**
 (calibration / quasi-external / XAI), **Track-C** (tabular panel), and the dispatch-routed per-cohort
 organs — against data you have obtained yourself. The **G1 radiomics floor, G2 imaging-closing arm,
@@ -183,13 +185,54 @@ leakage assertions, DeLong + ECE + multi-seed reporting) — is in
 
 ## Cohorts & data use
 
-This repository ships **no patient data and no trained weights**. Each cohort
+This repository's git tree ships **no patient data and no weight binaries**. Each cohort
 (Duke-Breast-Cancer-MRI, TCGA-BRCA, ISPY2 / MAMA-MIA, fastMRI-NYU) must be obtained by you, from its
 source, **under that source's own Data-Use Agreement (DUA)** — see
 [`data/README.md`](data/README.md) for portals, licenses/DUAs, and the expected on-disk layout. The
-cohorts are patient-disjoint and results are within-cohort only. Trained weights are referenced by
-SHA-256 in `results/TRAINED_ARTIFACTS.md`, not bundled. The code-vs-data license boundary is recorded
-in [`NOTICE`](NOTICE).
+cohorts are patient-disjoint and results are within-cohort only. The 15 G5 imaging-encoder weights
+are distributed separately as **GitHub Release assets** under **CC-BY-NC-4.0** (see
+[Model weights](#model-weights)); every other trained artifact is referenced by SHA-256 in
+`results/TRAINED_ARTIFACTS.md`, not bundled. The code-vs-data-vs-weights license boundary is recorded
+in [`NOTICE`](NOTICE) and [`LICENSE-WEIGHTS.md`](LICENSE-WEIGHTS.md).
+
+## Model weights
+
+The 15 **G5 imaging-encoder** weight files (`reports/G5_xai/weights/model_s{0,1,2}f{0-4}.pt`,
+3 seeds × 5 folds, ~1.9 GB total) are distributed as **GitHub Release assets** — not committed to the
+git tree. They are provided for exact reproducibility and provenance of the research pipeline; see
+[`results/Table2_results.md`](results/Table2_results.md) and
+[`docs/adr/0008-g3-fusion-architecture-reframe.md`](docs/adr/0008-g3-fusion-architecture-reframe.md)
+for the scientific characterisation of what they do and do not demonstrate.
+
+**Get them (download + verify).** The release tag is a placeholder until the GitHub Release is
+published — set it once it exists:
+
+```bash
+# python (stdlib only): download the 15 .pt from the release + SHA-256-verify each, failing loudly
+# on any mismatch. Files land in reports/G5_xai/weights/ (git-ignored).
+PINKSIGHT_RELEASE_TAG=v1.0.0-weights python3 scripts/fetch_weights.py
+
+# pure-shell alternative (curl + sha256sum), same tag convention:
+PINKSIGHT_RELEASE_TAG=v1.0.0-weights ./scripts/fetch_weights.sh
+
+# verify files you already have, no network:
+python3 scripts/fetch_weights.py --check
+sha256sum -c scripts/g5_weights.sha256      # run from the repo root
+```
+
+The SHA-256 for every file is in [`results/TRAINED_ARTIFACTS.md`](results/TRAINED_ARTIFACTS.md)
+(human-readable) and [`scripts/g5_weights.sha256`](scripts/g5_weights.sha256) (machine-readable,
+built from that table). Every **other** trained artifact stays hash-manifest-only — obtain or
+reproduce it yourself, then verify it against its row in `results/TRAINED_ARTIFACTS.md`.
+
+**License & citation.** The weight files are licensed **CC-BY-NC-4.0** — separately from the
+Apache-2.0 **code** license — because they are derived from **Duke-Breast-Cancer-MRI** (TCIA,
+CC-BY-NC-4.0) and inherit its non-commercial term. Attribution is required: cite **Saha, A.,
+Harowicz, M., Grimm, L., et al. (2021), Duke-Breast-Cancer-MRI, TCIA**, DOI
+[10.7937/TCIA.e3sv-re93](https://doi.org/10.7937/TCIA.e3sv-re93); observe the
+[TCIA Data Usage Policy](https://www.cancerimagingarchive.net/data-usage-policies-and-restrictions/).
+The weight files must **not** be used to re-identify subjects. Full terms:
+[`LICENSE-WEIGHTS.md`](LICENSE-WEIGHTS.md).
 
 ## Citation
 
@@ -198,6 +241,17 @@ renders a "Cite this repository" button from that file.
 
 ## License
 
-Source code: **Apache-2.0** (see [`LICENSE`](LICENSE)). The code license covers **only the code** —
-patient data is not redistributed (each cohort is DUA-bound) and trained weights are provided as a
-SHA-256 manifest only, not bundled. See [`NOTICE`](NOTICE) and [`data/README.md`](data/README.md).
+PinkSight is **dual-licensed** — code and model weights carry different terms:
+
+- **Code — Apache-2.0** (see [`LICENSE`](LICENSE)). Covers **only** the source code in this
+  repository.
+- **Model weights — CC-BY-NC-4.0** (see [`LICENSE-WEIGHTS.md`](LICENSE-WEIGHTS.md)). The 15 G5
+  imaging-encoder weight files, distributed as **GitHub Release assets** (see
+  [Model weights](#model-weights)), are derived from **Duke-Breast-Cancer-MRI** (TCIA) and inherit
+  its non-commercial term. Attribution required — cite Saha et al. (2021), DOI
+  [10.7937/TCIA.e3sv-re93](https://doi.org/10.7937/TCIA.e3sv-re93).
+
+Patient data is never redistributed (each cohort is DUA-bound), and every trained artifact other
+than those 15 weight files remains a SHA-256 manifest entry only (`results/TRAINED_ARTIFACTS.md`).
+The code-vs-data-vs-weights boundary is recorded in [`NOTICE`](NOTICE) and
+[`LICENSE-WEIGHTS.md`](LICENSE-WEIGHTS.md).

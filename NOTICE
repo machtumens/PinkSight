@@ -1,8 +1,9 @@
 PinkSight — Team TestEin, OPSI 2026
 Copyright 2026 Team TestEin.
 
-This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+This product's SOURCE CODE is licensed under the Apache License, Version 2.0 (see LICENSE).
 The Apache-2.0 license and this NOTICE cover ONLY the source code in this repository.
+The 15 G5 model-weight files are licensed separately under CC-BY-NC-4.0 (see LICENSE-WEIGHTS.md).
 
 ================================================================================
 Data, weights, and results — NOT covered by the code license
@@ -16,12 +17,19 @@ Data, weights, and results — NOT covered by the code license
    data/README.md for the per-cohort portal, license/DUA, and expected layout.
    The Apache-2.0 grant above does NOT extend to any cohort's data.
 
-2. TRAINED WEIGHTS ARE NOT BUNDLED — HASH MANIFEST ONLY.
-   No trained weights ship here. The large trained artifacts (~1.9 GB) are
-   referenced by a checksummed manifest at results/TRAINED_ARTIFACTS.md, which
-   lists a SHA-256 per real trained artifact and per frozen-feature input so you
-   can locate and verify them once you have produced or obtained them yourself.
-   The manifest is provenance metadata, not the weights.
+2. TRAINED WEIGHTS — DUAL-LICENSED; DISTRIBUTED SEPARATELY, NOT IN THE GIT TREE.
+   No weight binaries live in this git tree. The 15 G5 imaging-encoder weight
+   files (reports/G5_xai/weights/model_s{0,1,2}f{0-4}.pt, ~1.9 GB) are distributed
+   as GitHub Release assets and licensed CC-BY-NC-4.0 (see LICENSE-WEIGHTS.md) —
+   NOT under the Apache-2.0 code license above. They are derived from the
+   Duke-Breast-Cancer-MRI collection (TCIA, CC-BY-NC-4.0) and inherit its
+   non-commercial term; attribution is required (cite Saha et al. 2021, DOI
+   10.7937/TCIA.e3sv-re93) and they must not be used to re-identify subjects.
+   Fetch + verify them with scripts/fetch_weights.py (or
+   `sha256sum -c scripts/g5_weights.sha256`) against results/TRAINED_ARTIFACTS.md.
+   Every OTHER trained artifact and every frozen-feature input remains
+   hash-manifest-only: referenced by SHA-256 in results/TRAINED_ARTIFACTS.md so
+   you can locate and verify it once you have produced or obtained it yourself.
 
 3. RESULTS ARE PER-COHORT, WITHIN-COHORT, AND FIREWALLED.
    The reportable numbers in results/Table2_results.md are each a within-cohort

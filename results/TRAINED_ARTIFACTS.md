@@ -6,6 +6,13 @@ manifest is how you locate and verify them. Paths are relative to the repository
 **Verify any file:** `sha256sum <path>` and compare to the hash below (or
 `sha256sum -c` against a checksum file built from this table).
 
+**Distribution:** the 15 G5 imaging-encoder weights below are distributed as **GitHub Release
+assets** — fetch and verify them with `scripts/fetch_weights.py` (or `sha256sum -c
+scripts/g5_weights.sha256`, the machine-readable checksum file built from this table). They are
+licensed CC-BY-NC-4.0 (see `LICENSE-WEIGHTS.md`), separately from the Apache-2.0 code license. Every
+other artifact listed here stays hash-manifest-only — obtain or reproduce it yourself, then verify it
+against its row.
+
 **Firewall (LOCK-1):** Track A (Duke) and Track B (TCGA-BRCA) artifacts are **separate organs on
 patient-disjoint cohorts**. Never pool them, never compare their numbers. See `Table2_results.md`
 for each artifact's verified result within its own cohort.

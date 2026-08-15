@@ -1,8 +1,11 @@
 # data/ — cohort acquisition & expected layout
 
-This repository ships **no patient data and no trained weights**. Every cohort below must be
-obtained by you, directly from its source, **under that source's own data-use agreement (DUA)**.
-Nothing here redistributes patient data, and this repo holds no DUA on your behalf.
+This repository's git tree ships **no patient data and no weight binaries**. Every cohort below must
+be obtained by you, directly from its source, **under that source's own data-use agreement (DUA)**.
+Nothing here redistributes patient data, and this repo holds no DUA on your behalf. (The 15 G5
+imaging-encoder weights are distributed separately as GitHub Release assets under CC-BY-NC-4.0 —
+fetch + verify with `scripts/fetch_weights.py`; see `results/TRAINED_ARTIFACTS.md` and
+`LICENSE-WEIGHTS.md`.)
 
 ## Firewall first (LOCK-1)
 
@@ -79,13 +82,22 @@ data/
 
 ## Verifying your data & weights
 
-Once you have placed **both** the cohort data (above) and the trained weights, verify every artifact
-against the checksummed manifest at **`results/TRAINED_ARTIFACTS.md`** — it lists a SHA-256 for each
-real trained artifact and each frozen feature file:
+The 15 **G5 imaging-encoder** weights (~1.9 GB) are distributed as **GitHub Release assets** (not in
+the git tree). Fetch and verify them in one step:
+
+```
+python3 scripts/fetch_weights.py            # download from the release + SHA-256-verify each file
+sha256sum -c scripts/g5_weights.sha256      # or verify files you already have, from the repo root
+```
+
+Every **other** artifact (cohort data you placed, frozen-feature inputs, the clinical-anchor and
+Track-B heads) stays hash-manifest-only — verify each against its row in
+**`results/TRAINED_ARTIFACTS.md`**:
 
 ```
 sha256sum <path>          # compare the digest to the row in results/TRAINED_ARTIFACTS.md
 ```
 
-The large weights (~1.9 GB) are deliberately **not bundled**; `results/TRAINED_ARTIFACTS.md` is how
-you locate and verify both the weights and the frozen-feature inputs listed in the layout above.
+`results/TRAINED_ARTIFACTS.md` (human-readable) and `scripts/g5_weights.sha256` (machine-readable)
+carry the SHA-256 for each file. The G5 weights are licensed CC-BY-NC-4.0 (see `LICENSE-WEIGHTS.md`),
+separately from the Apache-2.0 code license.
