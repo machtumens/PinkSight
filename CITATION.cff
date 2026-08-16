@@ -16,7 +16,6 @@ authors:
 version: "0.0.0"
 date-released: "2026-08-19"
 license: Apache-2.0
-# Placeholder — Phase 6 (publish prep) fills the real URL once the GitHub remote exists.
 repository-code: "https://github.com/REPLACE-ME/pinksight"
 keywords:
   - breast cancer

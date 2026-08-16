@@ -2,11 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
-  PinkSight design tokens — clinical calm, one signal accent, semantic color only.
-  Rule (Design Systems Lead + Brand Designer): color carries MEANING, not decoration.
-  "PinkSight" ≠ pink-everything: rose is the single interactive/brand signal.
-*/
 @layer base {
   :root {
     --background: 210 24% 98%;
@@ -19,21 +14,19 @@
     --input: 214 20% 88%;
     --ring: 336 62% 48%;
 
-    --primary: 336 62% 48%;          /* disciplined rose — the ONE signal color */
+    --primary: 336 62% 48%;
     --primary-foreground: 0 0% 100%;
 
-    /* Trust semantics — the heart of the product */
-    --uncertain: 38 92% 48%;         /* amber: model is unsure */
-    --abstain: 215 14% 52%;          /* slate: model declines */
-    --good: 152 55% 38%;             /* calibration ECE <= 0.05 */
-    --warn: 38 92% 48%;              /* calibration 0.05–0.10 */
-    --bad: 4 68% 50%;                /* calibration > 0.10 */
+    --uncertain: 38 92% 48%;
+    --abstain: 215 14% 52%;
+    --good: 152 55% 38%;
+    --warn: 38 92% 48%;
+    --bad: 4 68% 50%;
 
-    /* Modality provenance — which stream contributed */
     --mod-mri: 210 85% 52%;
     --mod-clinical: 176 60% 38%;
-    --mod-path: 268 52% 56%;         /* Track B (future) */
-    --mod-genomic: 292 48% 52%;      /* Track B (future) */
+    --mod-path: 268 52% 56%;
+    --mod-genomic: 292 48% 52%;
 
     --radius: 0.5rem;
   }
@@ -67,9 +60,9 @@
   * { @apply border-border; }
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    /* select-none by default: this is an app, not a document */
+
     user-select: none;
   }
-  /* Numbers everywhere are provenance — make them legible and tabular */
+
   .tnum { font-variant-numeric: tabular-nums; }
 }

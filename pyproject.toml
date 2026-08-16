@@ -3,18 +3,14 @@ name = "pinksight"
 version = "0.0.0"
 description = "Multimodal DCE-MRI + clinical fusion for breast-cancer subtype + Ki-67 (Team TestEin, OPSI 2026)"
 requires-python = ">=3.11"
-# Core deps only — enough to run the G0 audit + integrity tests.
-# ponytail: do NOT pull torch/MONAI (multi-GB CUDA) just to count Ki-67 values.
 dependencies = [
     "pandas>=2.2",
     "numpy>=1.26",
     "pyyaml>=6.0",
-    "openpyxl>=3.1",   # read Duke Clinical_and_Other_Features .xlsx
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
-# Heavy ML stack — install at G1/G2 when preprocessing/training actually starts:
-#   uv sync --extra ml
 ml = [
     "torch>=2.3",
     "monai>=1.3",
@@ -22,30 +18,19 @@ ml = [
     "shap>=0.45",
     "captum>=0.7",
     "scikit-learn>=1.5",
-    "scipy>=1.11",                    # ndimage (h0_localizer ROI-box→crop) + eval/stats/xai (metrics, DeLong, saliency)
-    "rtdl-revisiting-models>=0.0.2",  # FT-Transformer (LOCK-3 clinical encoder); P05 clinical baseline
-    # P03 preprocessing chain (LOCK-3): MONAI has no N4 / Nyul, so:
-    "SimpleITK>=2.3",                 # N4 bias correction + DICOM series read + 1mm-iso resample
-    "intensity-normalization>=2.2",   # Nyul histogram-landmark normalization (train-only fit)
-    # G1 radiomics baseline (LOCK-4 / [2.1]). git main, not PyPI: the PyPI release (3.0.1a1) fails
-    # to build on py3.11 (missing cmatrices.h); git main builds clean.
+    "scipy>=1.11",
+    "rtdl-revisiting-models>=0.0.2",
+    "SimpleITK>=2.3",
+    "intensity-normalization>=2.2",
     "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git",
 ]
-# Novel-heads arm floor gates — the "arm ML extra" named in wave1_eval_harness's ImportError.
-# Deliberately LIGHT: the floor gates are $0 CPU tabular/embedding fits, so they must NOT drag in
-# the multi-GB torch/MONAI `ml` extra above.  Install with: uv sync --extra arms
-# ponytail: lightgbm + sklearn only; add more when an arm actually needs it.
 arms = [
-    "lightgbm>=4.0",      # wave1_eval_harness._fit_predict_lightgbm (floor-gate default model)
-    "scikit-learn>=1.5",  # wave1_eval_harness._fit_predict_elasticnet (GREENLIGHT advance step)
+    "lightgbm>=4.0",
+    "scikit-learn>=1.5",
 ]
-# Track B pathology-encode deps (WSI tiling + UNI2-h bag IO). Install with the `ml` extra for the
-# real encode run: uv sync --extra ml --extra trackb.  openslide-python also needs the native
-# libopenslide system library at RUNTIME (import is lazy in scripts/tile_svs_brca.py, so the local
-# smoke test — which never tiles a real slide — does not require it).
 trackb = [
-    "h5py>=3.10",             # per-patient bag IO (data/pathology/bags/uni/{patient}.h5)
-    "openslide-python>=1.3",  # WSI .svs reading (scripts/tile_svs_brca.py, lazy-imported)
+    "h5py>=3.10",
+    "openslide-python>=1.3",
 ]
 dev = [
     "pytest>=8.0",
@@ -57,11 +42,9 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-# Defaults (E,F) + T20 = no stray print() in production code (manual §10.1 lint gate).
 extend-select = ["T20"]
 
 [tool.ruff.lint.per-file-ignores]
-# CLIs, CI guards, and tests legitimately print their results.
 "scripts/**" = ["T20"]
 "ci/**" = ["T20"]
 "tests/**" = ["T20"]
@@ -76,9 +59,6 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
-# The `ml` extra has a direct VCS reference (pyradiomics @ git+...), which
-# hatchling rejects unless direct references are explicitly allowed. Without
-# this, `uv run` fails to build the project before it can run pytest/ruff.
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
