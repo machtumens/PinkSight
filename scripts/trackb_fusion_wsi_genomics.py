@@ -1,41 +1,3 @@
-"""Piece B — intra-TCGA-BRCA WSI (frozen TITAN OOF) + mRNA-genomics late-fusion subtype model,
-with a STRUCTURALLY SEPARATE PAM50 proliferation-index Ridge co-target (the LOCK-2 firewall).
-
-Asks: does adding a pre-registered 6-gene mRNA panel to the frozen-TITAN WSI logit beat WSI-alone by
-ΔAUC on the LumA-vs-Basal contrast, N=640 TCGA-BRCA? WSI-alone is already near-ceiling (arm3 0.9646 /
-UNI2-h 0.9675), so a null/marginal/negative ΔAUC is the EXPECTED, acceptable, honestly-reported
-outcome — this is NOT gated on beating a bar (see the pre-registered decision rule in the plan).
-
-HONEST FRAMING (non-negotiable — decisions.md claim ledger, E4):
-  This is LOGISTIC-REGRESSION LATE-FUSION STACKING of [frozen TITAN OOF logit, scaled mRNA panel].
-  It is NOT cross-attention MIL fusion (same honest-framing rationale as trackb_fusion_deltaauc.py:
-  the PoC bags are degenerate at ~1 tile/patient). Report ONLY as "linear-probe TITAN + late-fusion
-  mRNA-genomics bundle" — NEVER "cross-attention fusion achieves X".
-
-  Intra-TCGA-BRCA ONLY. NOT a cross-institution generalisation claim. NOT growth-rate / kinetics /
-  early-detection. AUROC / ΔAUC are ALWAYS reported with CI + p-value + a shuffle sentinel.
-
-  NON-INDEPENDENCE CAVEAT (must stay in the report): Piece B reuses the SAME frozen TITAN embeddings
-  as arm3 and arm5. It is therefore NOT independent evidence of a WSI subtype signal — the three are
-  readouts of one embedding set on one 640-patient cohort.
-
-FIREWALL (LOCK-2 — the load-bearing integrity guarantee):
-  The auxiliary PAM50 proliferation-index co-target is fit by a STRUCTURALLY SEPARATE sklearn
-  estimator (Ridge), sharing ZERO trainable parameters with the subtype LogisticRegression. The
-  proliferation score is a molecular SNAPSHOT at diagnosis (a Ki-67 surrogate index; arm5's target,
-  reused verbatim) — permitted here ONLY as a TARGET, never as a subtype-model input feature, and
-  never concatenated into the subtype design matrix. `run(compute_proliferation=False)` and
-  `run(compute_proliferation=True)` produce BIT-IDENTICAL subtype OOF scores by construction: the
-  subtype path is a pure function of [TITAN logit, mRNA panel, labels, folds] with no dependence on
-  whether the auxiliary head runs. tests/test_leakage.py::test_pam50_proliferation_never_feeds_subtype_head
-  proves this both structurally (synthetic) and empirically (real-data bit-for-bit equivalence).
-
-$0 compute — CPU only. The mRNA read is a single streaming file scan; the cached TITAN OOF logits are
-reused, so the whole run is well under a minute on CPU. No GPU / RunPod.
-
-Run:  uv run --extra ml python scripts/trackb_fusion_wsi_genomics.py
-      uv run --extra ml python scripts/trackb_fusion_wsi_genomics.py --selfcheck
-"""
 
 from __future__ import annotations
 
@@ -53,19 +15,17 @@ from pinksight import FORBIDDEN_FEATURES
 from pinksight.metrics import delong_ci, delong_paired, ece
 from pinksight.trackb import assert_gate_open
 
-# Sibling imports — reuse the canonical Track B fold split / WSI baseline (trackb_fusion_deltaauc)
-# and arm5's proliferation-target machinery, verbatim (plan Touchpoints: READ-ONLY reuse via import).
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "novel_heads"))
 
-from arm5_proliferation_snapshot import (  # noqa: E402
+from arm5_proliferation_snapshot import (  
     PROLIF_GENES,
     _bootstrap_r_ci,
     _fit_predict_ridge,
     _pam50_proliferation_score,
 )
-from trackb_fusion_deltaauc import (  # noqa: E402
+from trackb_fusion_deltaauc import (  
     _FORBIDDEN_HISTOLOGY,
     _FORBIDDEN_SURVIVAL,
     _fold_splitter,
@@ -73,16 +33,8 @@ from trackb_fusion_deltaauc import (  # noqa: E402
     _load_manifest,
 )
 
-# --- Contract constants ---------------------------------------------------------------------------
-# Pre-registered 6-gene mRNA panel (E1: locked BEFORE any run — do NOT substitute after seeing a
-# result). Extends the 4 genes already vetted in the old synthetic leakage fixture
-# {TP53, CDH1, PIK3CA, GATA3} with two more common, non-PAM50-centroid TCGA-BRCA driver genes.
 MODALITY_C_GENES = ["TP53", "PIK3CA", "GATA3", "CDH1", "MAP3K1", "PTEN"]
 
-# GATA3-circularity probe (PI-approved 04-08-26): the ORIGINAL 6-gene panel minus GATA3, the one
-# PAM50 luminal-lineage classifier gene. Removing it isolates whether the fusion ΔAUC over WSI-alone
-# is genuine non-circular driver-gene signal or a GATA3 subtype-correlate artefact. The original
-# panel above is NOT deleted — this is an additive comparison code path (`--compare-ablation`).
 MODALITY_C_GENES_ABLATED = ["TP53", "PIK3CA", "CDH1", "MAP3K1", "PTEN"]
 
 EXPR = Path("data/genomics/tcga/brca_tcga_pan_can_atlas_2018/data_mrna_seq_v2_rsem.txt")
@@ -90,15 +42,10 @@ GENOMICS_OOF_NPY = Path("data/pathology/features/tcga_brca_fusion_genomics_oof.n
 GENOMICS_OOF_NPY_ABLATED = Path("data/pathology/features/tcga_brca_fusion_genomics_ablated_oof.npy")
 
 SEED = 42
-SHUFFLE_SENTINEL_MAX = 0.60  # fusion-subtype shuffle AUC must be < this (leak sentinel)
-PROLIF_SHUFFLE_ABS_MAX = 0.25  # |proliferation shuffle r| must collapse below this
+SHUFFLE_SENTINEL_MAX = 0.60  
+PROLIF_SHUFFLE_ABS_MAX = 0.25  
 N_EXPECTED = 640
 
-# Forbidden-gene union (E7: PROLIF_GENES is a dict[str, tuple[str,...]] -> use set(PROLIF_GENES) for
-# its keys; a bare `... | PROLIF_GENES` raises TypeError). Panel must be disjoint from ALL of these:
-# the leakage ledger (incl. the ESR1/PGR/ERBB2/MKI67 gene-symbol mirror), the reused histology /
-# survival column sets, AND the auxiliary target's own 11 proliferation genes (so "independent"
-# firewall is not undermined by input-level collinearity).
 _ALL_FORBIDDEN_GENES = (
     FORBIDDEN_FEATURES | _FORBIDDEN_HISTOLOGY | _FORBIDDEN_SURVIVAL | set(PROLIF_GENES)
 )
@@ -110,13 +57,6 @@ assert not _leaked_at_import, (
 
 
 def _assemble_modality_c(patients: list[str], genes: list[str] | None = None) -> np.ndarray:
-    """Streaming-filter read of the mRNA matrix for `genes` -> (640, len(genes)), 640-patient order.
-
-    `genes` defaults to the pre-registered MODALITY_C_GENES (6). The GATA3-ablation probe passes
-    MODALITY_C_GENES_ABLATED (5). Everything else — file read, log2(x+1), 12-char barcode grouping,
-    alignment, EV1 NaN transparency, leakage-safe constant 0-fill — is identical across panels.
-    Mirrors arm5._pam50_proliferation_score's file-reading pattern exactly (never a full 155 MB read).
-    """
     genes = genes if genes is not None else MODALITY_C_GENES
     if not EXPR.exists():
         raise FileNotFoundError(f"Piece B: mRNA matrix absent: {EXPR}")
@@ -132,24 +72,22 @@ def _assemble_modality_c(patients: list[str], genes: list[str] | None = None) ->
     found = {r[0] for r in rows}
     missing = [g for g in genes if g not in found]
     if missing:
-        # E1: a locked-panel gene absent from the real file is a data-availability gap, not a licence
-        # to silently substitute a different gene.
         raise FileNotFoundError(
             f"Piece B (E1): panel gene(s) absent from the real mRNA matrix: {missing}. "
             "STOP and report a data-availability gap — do NOT substitute genes."
         )
 
-    samples = header[2:]  # cols 0,1 = Hugo_Symbol, Entrez_Gene_Id
+    samples = header[2:]  
     by_gene = {
         r[0]: np.asarray(
             [float(v) if v not in ("", "NA") else np.nan for v in r[2:]], dtype=float
         )
         for r in rows
     }
-    expr = pd.DataFrame(by_gene, index=samples)  # samples x genes
+    expr = pd.DataFrame(by_gene, index=samples)  
     expr = np.log2(expr + 1.0)
-    expr.index = [s[:12] for s in expr.index]  # TCGA-XX-XXXX-01 -> 12-char patient barcode
-    expr = expr.groupby(level=0).mean()  # average repeat samples per patient
+    expr.index = [s[:12] for s in expr.index]  
+    expr = expr.groupby(level=0).mean()  
 
     mat = expr.reindex(index=list(patients), columns=genes)
     nan_counts = mat.isna().sum(axis=0)
@@ -157,7 +95,7 @@ def _assemble_modality_c(patients: list[str], genes: list[str] | None = None) ->
     for g in genes:
         print(f"    {g}: {int(nan_counts[g])}")
 
-    mc = np.nan_to_num(mat.to_numpy(dtype=float), nan=0.0)  # constant 0-fill uses NO fold info (leak-safe)
+    mc = np.nan_to_num(mat.to_numpy(dtype=float), nan=0.0)  
     assert mc.shape == (len(patients), len(genes)), (
         f"expected ({len(patients)},{len(genes)}) got {mc.shape}"
     )
@@ -167,17 +105,11 @@ def _assemble_modality_c(patients: list[str], genes: list[str] | None = None) ->
 def _subtype_fusion_oof(
     oof_logits_unimodal: np.ndarray, modality_c: np.ndarray, oof_labels: np.ndarray, folds
 ) -> np.ndarray:
-    """STEP B2 — per-fold LR stacking of [TITAN logit, TRAIN-scaled mRNA panel] -> subtype OOF probs.
-
-    PURE function of its inputs with ZERO dependence on the proliferation co-target. Each fold uses
-    its OWN StandardScaler instance (never shared/mutated across the firewall). The design matrix has
-    EXACTLY 1 + len(MODALITY_C_GENES) columns — the proliferation score is never a column here.
-    """
     n = len(oof_labels)
     oof = np.zeros(n)
     for fold, (tr, va) in enumerate(folds):
         scaler = StandardScaler()
-        mc_tr = scaler.fit_transform(modality_c[tr])  # scaler fit on TRAIN only
+        mc_tr = scaler.fit_transform(modality_c[tr])  
         mc_va = scaler.transform(modality_c[va])
         x_tr = np.hstack([oof_logits_unimodal[tr].reshape(-1, 1), mc_tr])
         x_va = np.hstack([oof_logits_unimodal[va].reshape(-1, 1), mc_va])
@@ -195,32 +127,21 @@ def _subtype_fusion_oof(
 def _proliferation_oof(
     oof_logits_unimodal: np.ndarray, modality_c: np.ndarray, target: np.ndarray, folds
 ) -> np.ndarray:
-    """STEP B3 — auxiliary PAM50 proliferation-index Ridge on the SAME inputs + SAME folds, but a
-    DIFFERENT, independent estimator instance (arm5._fit_predict_ridge makes its own StandardScaler +
-    Ridge(alpha=1.0)). ZERO shared parameters with _subtype_fusion_oof; the target is never fed into
-    the subtype path. This is the structural firewall.
-    """
     n = len(target)
     oof = np.full(n, np.nan)
     for _fold, (tr, va) in enumerate(folds):
         x_tr = np.hstack([oof_logits_unimodal[tr].reshape(-1, 1), modality_c[tr]])
         x_va = np.hstack([oof_logits_unimodal[va].reshape(-1, 1), modality_c[va]])
-        oof[va] = _fit_predict_ridge(x_tr, target[tr], x_va)  # arm5's own scaler+Ridge, TRAIN-only fit
+        oof[va] = _fit_predict_ridge(x_tr, target[tr], x_va)  
     assert not np.isnan(oof).any(), "proliferation OOF coverage gap — some patient got no prediction"
     return oof
 
 
 def _proliferation_target(patients: list[str]) -> np.ndarray:
-    """PAM50 proliferation index per patient (arm5._pam50_proliferation_score, reused verbatim),
-    aligned to the 640-patient order. Used ONLY as a Ridge TARGET — never a subtype input.
-    """
-    score = _pam50_proliferation_score()  # pd.Series indexed by 12-char barcode
+    score = _pam50_proliferation_score()  
     aligned = score.reindex(list(patients))
     n_missing = int(aligned.isna().sum())
     if n_missing:
-        # E1: cannot fabricate a regression target. arm5's probe confirmed 640/640 coverage; a miss
-        # is a data-availability gap, reported honestly rather than 0-filled (0-filling a TARGET
-        # invents a label).
         raise FileNotFoundError(
             f"Piece B (E1): {n_missing} patient(s) lack a PAM50 proliferation score — cannot fabricate "
             "a regression target. STOP and report a data-availability gap."
@@ -229,37 +150,23 @@ def _proliferation_target(patients: list[str]) -> np.ndarray:
 
 
 def _persist_oof(oof_scores_fusion: np.ndarray, path: Path = GENOMICS_OOF_NPY) -> None:
-    """Persist the subtype-fusion OOF (gitignored; mirrors OOF_NPY precedent). Always regenerated —
-    never loaded as an input cache — so the E3 stale-trust risk does not apply to this artifact. The
-    ablated panel persists to a SEPARATE path so it never overwrites the 6-gene OOF.
-    """
     path.parent.mkdir(parents=True, exist_ok=True)
     np.save(path, oof_scores_fusion)
     print(f"  [fusion] saved subtype-fusion OOF ({len(oof_scores_fusion)}) to {path} (gitignored)")
 
 
 def run(compute_proliferation: bool = True, panel: list[str] | None = None) -> dict:
-    """Run Piece B. Returns the trackb_fusion_deltaauc-shaped dict PLUS `oof_scores_fusion` (for the
-    firewall equivalence test) and, when compute_proliferation=True, a `proliferation` sub-dict.
-
-    `panel` defaults to the pre-registered MODALITY_C_GENES (6). The GATA3-ablation probe passes
-    MODALITY_C_GENES_ABLATED (5). WSI TITAN OOF, seed, folds, N, and the proliferation firewall are
-    IDENTICAL across panels — only the mRNA feature columns change — so the two ΔAUCs are comparable.
-
-    compute_proliferation=False computes the subtype path ONLY — and the returned subtype OOF is
-    BIT-IDENTICAL to the compute_proliferation=True run for the SAME panel (the firewall).
-    """
-    assert_gate_open()  # Track B real-data hard gate (LOCK-6) — raises if closed
+    assert_gate_open()  
 
     panel = panel if panel is not None else MODALITY_C_GENES
     ablated = set(panel) != set(MODALITY_C_GENES)
     oof_path = GENOMICS_OOF_NPY_ABLATED if ablated else GENOMICS_OOF_NPY
 
-    leaked = set(panel) & _ALL_FORBIDDEN_GENES  # belt-and-suspenders (mirrors import assert)
+    leaked = set(panel) & _ALL_FORBIDDEN_GENES  
     assert not leaked, f"LEAKAGE: panel contains forbidden gene(s): {leaked}"
 
     patients, oof_labels, manifest_df = _load_manifest()
-    folds = _fold_splitter(patients, oof_labels)  # SINGLE canonical split, reused for both heads (E4)
+    folds = _fold_splitter(patients, oof_labels)  
 
     print("[trackb_fusion_wsi_genomics] === STEP B0: unimodal TITAN OOF (WSI-alone, raw logits) ===")
     oof_logits_unimodal = _get_unimodal_oof(patients, oof_labels, manifest_df, folds)
@@ -275,8 +182,8 @@ def run(compute_proliferation: bool = True, panel: list[str] | None = None) -> d
     auroc_f = roc_auc_score(oof_labels, oof_scores_fusion)
     _, u_lo, u_hi = delong_ci(oof_labels, oof_logits_unimodal)
     _, f_lo, f_hi = delong_ci(oof_labels, oof_scores_fusion)
-    paired = delong_paired(oof_labels, oof_logits_unimodal, oof_scores_fusion)  # delta = fusion - WSI
-    ece_u = ece(oof_labels, 1.0 / (1.0 + np.exp(-oof_logits_unimodal)))  # logits -> prob for a fair ECE
+    paired = delong_paired(oof_labels, oof_logits_unimodal, oof_scores_fusion)  
+    ece_u = ece(oof_labels, 1.0 / (1.0 + np.exp(-oof_logits_unimodal)))  
     ece_f = ece(oof_labels, oof_scores_fusion)
 
     rng = np.random.default_rng(seed=0)
@@ -297,7 +204,7 @@ def run(compute_proliferation: bool = True, panel: list[str] | None = None) -> d
         "z": float(paired["z"]), "p": float(paired["p"]), "shuffle_auc": float(shuffle_auc),
         "n": int(len(oof_labels)),
         "panel": list(panel), "n_genes": len(panel),
-        "oof_scores_fusion": oof_scores_fusion,  # firewall equivalence-test surface (E2)
+        "oof_scores_fusion": oof_scores_fusion,  
     }
 
     if compute_proliferation:
@@ -327,10 +234,6 @@ def run(compute_proliferation: bool = True, panel: list[str] | None = None) -> d
 
 
 def _selfcheck_firewall_structural() -> dict:
-    """Synthetic-fixture structural firewall proof (no real data). Confirms the subtype design matrix
-    has exactly 1 + len(MODALITY_C_GENES) columns and that running the proliferation Ridge does NOT
-    perturb the subtype OOF (bit-identical). Backs test_pam50_proliferation_never_feeds_subtype_head (a).
-    """
     rng = np.random.default_rng(0)
     n, k = 12, len(MODALITY_C_GENES)
     logits = rng.normal(size=n)
@@ -342,21 +245,19 @@ def _selfcheck_firewall_structural() -> dict:
         (np.arange(0, n // 2), np.arange(n // 2, n)),
     ]
 
-    # Real column count from the exact construction the subtype path uses.
     tr = folds[0][0]
     scaler = StandardScaler().fit(mc[tr])
     x_tr = np.hstack([logits[tr].reshape(-1, 1), scaler.transform(mc[tr])])
     subtype_x_cols = int(x_tr.shape[1])
 
     sub_before = _subtype_fusion_oof(logits, mc, labels, folds)
-    _ = _proliferation_oof(logits, mc, target, folds)  # separate estimator — must not touch subtype
+    _ = _proliferation_oof(logits, mc, target, folds)  
     sub_after = _subtype_fusion_oof(logits, mc, labels, folds)
 
     return {"subtype_x_cols": subtype_x_cols, "bit_identical": bool(np.array_equal(sub_before, sub_after))}
 
 
 def selfcheck() -> int:
-    """Assert the panel disjointness and the structural firewall — with NO data on disk."""
     leaked = set(MODALITY_C_GENES) & _ALL_FORBIDDEN_GENES
     assert not leaked, f"selfcheck: MODALITY_C_GENES leak forbidden/proliferation genes: {leaked}"
 
@@ -404,19 +305,12 @@ def _print_report(m: dict) -> None:
 
 
 def _run_ablation_comparison() -> dict:
-    """GATA3-circularity probe (PI-approved 04-08-26): run the full pipeline with the 6-gene panel AND
-    the 5-gene (GATA3-ablated) panel under IDENTICAL conditions (same WSI TITAN OOF, seed 42, folds,
-    N=640, firewall), verify the firewall still holds for the ablated panel, then print the ΔAUC
-    comparison + a plain verdict. Reports whatever the number is — a collapse to null is the expected,
-    acceptable outcome that confirms circularity. If the ablated firewall fails, STOP (raise).
-    """
     print("########## GATA3-CIRCULARITY PROBE — FULL (6-gene) vs ABLATED (5-gene, GATA3 removed) ##########")
     print("\n>>> FULL 6-gene panel <<<")
     full = run(compute_proliferation=True, panel=MODALITY_C_GENES)
     print("\n>>> ABLATED 5-gene panel (GATA3 REMOVED) <<<")
     abl = run(compute_proliferation=True, panel=MODALITY_C_GENES_ABLATED)
 
-    # Firewall MUST still hold for the ablated panel: subtype OOF bit-identical with/without prolif.
     abl_off = run(compute_proliferation=False, panel=MODALITY_C_GENES_ABLATED)
     firewall_ok = bool(
         np.array_equal(

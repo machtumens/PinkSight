@@ -1,8 +1,3 @@
-"""Radiomics baseline checks (sklearn-only, always runs): patient-grouped CV AUROC + gating.
-
-Covers the testable-now half (classifier + LOCK-2 patient-level CV). Feature extraction is gated
-on pyradiomics + imaging and is only asserted to refuse, never to fabricate.
-"""
 
 import pytest
 
@@ -24,7 +19,7 @@ def _separable(n_per_class=15, n_feats=4, seed=0):
     x1 = rng.normal(3.0, 1.0, (n_per_class, n_feats))
     X = np.vstack([x0, x1])
     y = np.array([0] * n_per_class + [1] * n_per_class)
-    groups = np.arange(len(y))  # one patient per row
+    groups = np.arange(len(y))  
     return X, y, groups
 
 
@@ -33,13 +28,12 @@ def test_cross_val_auroc_is_a_probability_and_separates():
     mean, folds = cross_val_auroc(X, y, groups, n_splits=5)
     assert len(folds) == 5
     assert all(0.0 <= a <= 1.0 for a in folds)
-    assert mean > 0.9  # clearly-separable synthetic features
+    assert mean > 0.9  
 
 
 def test_cross_val_auroc_runs_with_repeated_patients():
-    # Two rows per patient — the patient-level guard must still hold (no patient across a fold).
     X, y, base = _separable(n_per_class=15)
-    groups = np.concatenate([base[:15] // 2, base[15:] // 2 + 100])  # repeats within each class
+    groups = np.concatenate([base[:15] // 2, base[15:] // 2 + 100])  
     mean, folds = cross_val_auroc(X, y, groups, n_splits=3)
     assert 0.0 <= mean <= 1.0
 
@@ -48,7 +42,7 @@ def test_make_classifier_kinds():
     assert make_classifier("logreg") is not None
     assert make_classifier("rf") is not None
     with pytest.raises(ValueError):
-        make_classifier("xgboost")  # not wired yet
+        make_classifier("xgboost")  
 
 
 def test_cross_val_auroc_rejects_length_mismatch():
@@ -57,9 +51,8 @@ def test_cross_val_auroc_rejects_length_mismatch():
 
 
 def test_extract_features_runs_when_provisioned_else_gates():
-    # pyradiomics now provisioned -> real extraction; absent (fresh clone) -> refuse, never fabricate.
     try:
-        import radiomics  # noqa: F401
+        import radiomics  
     except ImportError:
         with pytest.raises(FeaturesNotProvisioned):
             extract_features(np.zeros((1, 8, 8, 8)), np.ones((8, 8, 8)))
@@ -70,4 +63,4 @@ def test_extract_features_runs_when_provisioned_else_gates():
     mask[3:9, 3:9, 3:9] = 1
     feats = extract_features(vol, mask, phase_names=["post1"], settings={"binCount": 32})
     assert feats and all(isinstance(v, float) for v in feats.values())
-    assert all(k.startswith("post1_") for k in feats)  # phase-prefixed, flat dict
+    assert all(k.startswith("post1_") for k in feats)  

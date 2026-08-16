@@ -1,41 +1,3 @@
-"""Arm 2 (Wave 1) — pan-subtype subtype-purity / admixture organ. FLOOR GATE (patient-disjoint CV).
-
-Purpose (one line): characterise, at diagnosis, whether a tumour's expression profile matches ONE
-PAM50 subtype cleanly (confident) or sits between subtypes (admixed) — predicted from NON-identity
-(non-PAM50) expression only. The floor gate is the cheapest de-risk: can residual (non-PAM50)
-expression recover the confident-vs-admixed distinction at all? If it cannot, no calibrated purity
-organ is warranted. This gate produces the number (AUROC + DeLong CI + ECE + multi-seed) and the
-KILL / GREENLIGHT decision vs the config thresholds.
-
-Target construction (leakage-safe): the admixed/confident LABEL is derived from nearest-centroid
-subtype correlations computed on the 50 PAM50 genes ONLY. A sample whose top-1-vs-top-2 subtype
-centroid-correlation MARGIN is below the cohort median is "admixed" (its profile sits between two
-subtypes); above the median is "confident" (one subtype dominates). The 50 PAM50 genes define the
-TARGET here — which is allowed (LOCK-2 permits forbidden fields as the prediction target). They are
-then HELD OUT of the INPUT feature matrix (with ESR1/ERBB2/MKI67), so the classifier never sees a
-subtype-defining gene. This is the "residual expression signal from non-PAM50 genes is the allowed
-feature space" the plan mandates.
-
-Ledger guard (LOCK-1/LOCK-2, verbatim in every report): "subtype admixture characterisation from
-non-identity expression features at diagnosis." NEVER a subtype predictor from known markers — PAM50
-IS the subtype definition, so feeding it (or ESR1/ERBB2/MKI67) is circular AND a LOCK-2 leak. NEVER
-prognosis / recurrence / kinetics / early-detection / cross-institution generalisation.
-
-Data (public, staged under data/genomics/metabric/brca_metabric/; cBioPortal `brca_metabric`):
-  - data_mrna_illumina_microarray.txt   — expression matrix (rows = Hugo_Symbol, cols = MB-xxxx samples)
-  - data_clinical_patient.txt           — clinical incl. CLAUDIN_SUBTYPE (Pam50 + Claudin-low subtype)
-Provenance: METABRIC (Curtis et al. 2012; Pereira et al. 2016) via cBioPortal `brca_metabric`. Public.
-
-Eval integrity (LOCK-2, decisions.md / plan Shared Evaluation Spine):
-  - PATIENT-disjoint CV (one METABRIC sample per patient — patient-level is automatic). Shared harness.
-  - Leakage guard: the 53-gene PAM50 + IHC-mirror exclusion is enforced on the feature columns by the
-    shared assert_no_forbidden_inputs BEFORE any fit; PAM50 genes appear only in target construction.
-  - Never a bare number: AUROC + DeLong 95% CI + ECE at >= 3 seeds (shared wave1_eval_harness).
-  - Calibration is the harness OOF (per-seed 5-fold); no separate in-sample calibration fit (avoids
-    the Track-C in-sample-leak lesson — ADR-0010).
-
-Plan: process/general-plans/active/novel-heads-roadmap_25-07-26/novel-heads-roadmap_PLAN_25-07-26.md
-"""
 
 from __future__ import annotations
 
@@ -50,60 +12,30 @@ import numpy as np
 import pandas as pd
 import yaml
 
-# Repo root on sys.path so `pinksight` + the sibling harness import when run as a bare script.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from scripts.novel_heads.wave1_eval_harness import (  # noqa: E402
+from scripts.novel_heads.wave1_eval_harness import (  
     FloorGateResult,
     oof_calibrate,
     run_floor_gate,
     shap_top20,
     validate_arm_report_keywords,
 )
-from tests.test_novel_heads_leakage import assert_no_forbidden_inputs  # noqa: E402
+from tests.test_novel_heads_leakage import assert_no_forbidden_inputs  
 
 _PURPOSE = "characterise at-diagnosis subtype admixture from non-PAM50 expression (floor gate)"
 
-# --- Feature-space controls (high-dim guardrails) --------------------------------------------------
-# METABRIC microarray is ~24k genes; a LightGBM on ~2k samples x 24k features is slow and mostly
-# noise. Restrict to the top-variance NON-PAM50 genes. Variance ranking is UNSUPERVISED (uses only X,
-# never y) so it introduces no label leakage across the CV folds.
 _TOP_K_GENES = 2000
 
-# The real PAM50 subtype centroids are built from the 50 PAM50 genes' expression. The subtypes we
-# consider "clean" targets exclude the ambiguous/technical calls (NC = not classified; blank). The
-# claudin-low class is a molecular subtype adjacent to Basal — kept, since it is a legitimate call.
 _VALID_SUBTYPES = ("LumA", "LumB", "Her2", "Basal", "Normal", "claudin-low")
-_EXCLUDED_SUBTYPE_TOKENS = ("nc", "")  # NC / blank -> dropped from target construction
+_EXCLUDED_SUBTYPE_TOKENS = ("nc", "")  
 
-# --- Construct-validity control: EXTERNAL (RNA-independent) discordance target --------------------
-# The floor gate's target is the PAM50-gene centroid MARGIN — expression-derived, so predicting it
-# from the co-expressed (non-PAM50) transcriptome risks being tautological (transcriptome -> a
-# transcriptome-derived label). The control replaces that target with the DISAGREEMENT between the
-# clinical IHC surrogate intrinsic subtype (from METABRIC ER/PR/HER2 PROTEIN status — IHC/SNP6,
-# NOT the expression matrix) and the PAM50 transcriptomic call. A patient whose IHC subtype and PAM50
-# subtype disagree is genuinely ambiguous/admixed (positive). Both are at-diagnosis labels present in
-# METABRIC. ER/PR/HER2 are used ONLY to build the target; they never enter the input matrix (the
-# expression matrix has no receptor-status columns and the gene mirrors ESR1/ERBB2/PGR/MKI67 are in
-# the 53-gene hold-out), so the input feature space is IDENTICAL to the floor gate.
-#
-# IHC surrogate intrinsic subtype = St Gallen 2013 / Goldhirsch receptor-block convention, at the
-# receptor-block level (no Ki-67 IHC split into LumA-vs-LumB — Ki-67 is a forbidden field anyway):
-#   ER+ and/or PR+, HER2-  -> Luminal (HER2-)
-#   ER+ and/or PR+, HER2+  -> Luminal (HER2+)   [collapsed to the Luminal block for a 3-way compare]
-#   ER-, PR-,       HER2+  -> HER2-enriched (HER2E)
-#   ER-, PR-,       HER2-  -> Triple-negative (TNBC)
-# PAM50 collapses to the SAME 3 comparable blocks so IHC-block != PAM50-block is a well-defined
-# discordance. Positive-status token is the exact cBioPortal string.
 _IHC_POSITIVE_TOKEN = "Positive"
 _IHC_NEGATIVE_TOKEN = "Negative"
-# PAM50 -> receptor-comparable block. LumA/LumB -> Luminal; Her2 -> HER2E; Basal/claudin-low -> TNBC
-# (both are ER/PR/HER2-low, basal-like); Normal-like is ER+-leaning -> Luminal. Ambiguous by design
-# is exactly what a discordance target should capture.
 _PAM50_TO_BLOCK: dict[str, str] = {
     "LumA": "Luminal",
     "LumB": "Luminal",
@@ -116,7 +48,6 @@ _PAM50_TO_BLOCK: dict[str, str] = {
 
 @dataclass(frozen=True)
 class ArmConfig:
-    """Parsed arm-2 config knobs the floor gate needs (dataset paths + exclusion list + thresholds)."""
 
     metabric_expression: Path
     metabric_clinical: Path
@@ -170,18 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-# ==================================================================================================
-# Config loading (the stub config ships dataset paths as `TBD/...` placeholders; the execute agent
-# staged the real cBioPortal `brca_metabric` bundle under data/genomics/metabric/. We resolve to it).
-# ==================================================================================================
 def _resolve_config(cfg_raw: dict, data_root: Path) -> ArmConfig:
-    """Map the config to the STAGED METABRIC files under data_root/data/genomics/metabric/brca_metabric.
-
-    The stub config carries `datasets:` as `TBD/...` placeholders (populated: false). Rather than
-    trust those, we resolve to the known cBioPortal bundle layout. If a required file is absent we
-    raise a clear FileNotFoundError so the CLI exits with the exact missing-data reason (the honest
-    BLOCKED outcome), never a fabricated number.
-    """
     bundle = data_root / "data" / "genomics" / "metabric" / "brca_metabric"
     expr = bundle / "data_mrna_illumina_microarray.txt"
     clin = bundle / "data_clinical_patient.txt"
@@ -215,37 +135,19 @@ def _resolve_config(cfg_raw: dict, data_root: Path) -> ArmConfig:
     )
 
 
-# ==================================================================================================
-# METABRIC load: expression (samples x genes) + subtype label per sample.
-# ==================================================================================================
 def _load_expression(cfg: ArmConfig) -> pd.DataFrame:
-    """Read the METABRIC microarray matrix -> DataFrame indexed by SAMPLE (MB-xxxx), columns = genes.
-
-    cBioPortal orientation is rows = Hugo_Symbol (+ Entrez_Gene_Id col), cols = MB-xxxx samples. We
-    drop the Entrez id column, set the gene symbol as the row index, then TRANSPOSE so each row is one
-    sample and each column is one gene (the shape the harness/leakage-guard expect). Duplicate gene
-    symbols (rare) collapse by mean so column names stay unique. Genes with all-NaN drop out.
-    """
     raw = pd.read_csv(cfg.metabric_expression, sep="\t", index_col=0, low_memory=False)
-    # second column is Entrez_Gene_Id — not a sample; drop it if present
     if "Entrez_Gene_Id" in raw.columns:
         raw = raw.drop(columns=["Entrez_Gene_Id"])
-    raw.index = raw.index.astype(str).str.upper()  # gene symbols, upper for exclusion matching
+    raw.index = raw.index.astype(str).str.upper()  
     if raw.index.duplicated().any():
         raw = raw.groupby(level=0).mean()
-    expr = raw.T  # -> samples (rows) x genes (cols)
+    expr = raw.T  
     expr.index = expr.index.astype(str)
     return expr
 
 
 def _load_subtype(cfg: ArmConfig) -> pd.Series:
-    """Read CLAUDIN_SUBTYPE (Pam50 + Claudin-low subtype) per sample from the clinical patient file.
-
-    cBioPortal clinical files carry 4 comment/header rows prefixed with `#` then the real header row
-    (PATIENT_ID ...). pandas `comment='#'` strips the 4 comment rows; the first surviving row is the
-    real header. CLAUDIN_SUBTYPE is the PAM50 call. METABRIC is one sample per patient, and the
-    expression matrix is keyed by the same MB-xxxx id, so PATIENT_ID doubles as the sample id.
-    """
     clin = pd.read_csv(cfg.metabric_clinical, sep="\t", comment="#", low_memory=False)
     if "PATIENT_ID" not in clin.columns or "CLAUDIN_SUBTYPE" not in clin.columns:
         raise ValueError(
@@ -256,23 +158,7 @@ def _load_subtype(cfg: ArmConfig) -> pd.Series:
     return sub
 
 
-# ==================================================================================================
-# Construct-validity control target-source: EXTERNAL IHC receptor panel (RNA-INDEPENDENT).
-# ==================================================================================================
 def _load_ihc_panel(cfg: ArmConfig) -> pd.DataFrame:
-    """Read the ER/PR/HER2 PROTEIN status (IHC/SNP6) per sample from the METABRIC clinical SAMPLE file.
-
-    These are the RNA-independent receptor calls (`ER_STATUS`, `PR_STATUS`, `HER2_STATUS` = Positive /
-    Negative in cBioPortal). They are derived by immunohistochemistry / SNP6 — NOT from the expression
-    matrix — which is exactly what makes the discordance target external to the input features. The
-    sample file lives next to the patient file in the same staged bundle; METABRIC is one sample per
-    patient (PATIENT_ID == SAMPLE_ID), so this keys on PATIENT_ID like the subtype loader.
-
-    Returns a DataFrame indexed by sample id with columns ER_STATUS / PR_STATUS / HER2_STATUS,
-    restricted to rows where all three are a clean Positive/Negative call (rows with a missing or
-    equivocal receptor cannot be assigned an IHC subtype and are dropped). Raises a clear error if the
-    sample file or a required column is absent (honest BLOCKED, never a fabricated target).
-    """
     sample_file = cfg.metabric_clinical.parent / "data_clinical_sample.txt"
     if not sample_file.exists():
         raise FileNotFoundError(
@@ -307,50 +193,21 @@ def _load_ihc_panel(cfg: ArmConfig) -> pd.DataFrame:
 
 
 def _ihc_surrogate_block(er: str, pr: str, her2: str) -> str:
-    """Map one ER/PR/HER2 IHC call to a receptor-comparable intrinsic-subtype BLOCK (St Gallen 2013).
-
-    Receptor-block level only (no Ki-67 split): ER+ or PR+ = luminal (hormone-receptor positive); HER2
-    status then splits luminal-HER2- vs luminal-HER2+ (both fold into the `Luminal` block for the 3-way
-    PAM50 comparison), and hormone-receptor-negative splits HER2-enriched vs triple-negative. This is
-    the standard IHC surrogate for the transcriptomic intrinsic subtype and is RNA-independent.
-    """
     er_pos = er == _IHC_POSITIVE_TOKEN
     pr_pos = pr == _IHC_POSITIVE_TOKEN
     her2_pos = her2 == _IHC_POSITIVE_TOKEN
     hormone_positive = er_pos or pr_pos
     if hormone_positive:
-        return "Luminal"  # luminal HER2- and luminal HER2+ both compare to the PAM50 Luminal block
+        return "Luminal"  
     if her2_pos:
-        return "HER2E"  # ER-/PR-/HER2+ -> HER2-enriched (non-luminal)
-    return "TNBC"  # ER-/PR-/HER2- -> triple-negative / basal-like block
+        return "HER2E"  
+    return "TNBC"  
 
 
-# ==================================================================================================
-# Target construction: nearest-centroid subtype correlation MARGIN on the 50 PAM50 genes ONLY.
-# ==================================================================================================
 def _pam50_centroid_margin(
     expr: pd.DataFrame, subtype: pd.Series, pam50_genes: frozenset[str]
 ) -> pd.Series:
-    """Per-sample top-1-vs-top-2 subtype-centroid correlation MARGIN, computed on PAM50 genes ONLY.
-
-    This is the TARGET-construction step (PAM50 genes are used HERE, as the target definition — LOCK-2
-    permits forbidden fields as the target; they are held out of the INPUT matrix downstream).
-
-    Method (the standard PAM50 nearest-centroid idea, restricted to the intersecting PAM50 genes we
-    actually have on the array):
-      1. On the PAM50-gene sub-matrix, build each subtype's CENTROID = mean expression vector over the
-         samples the clinical file calls that subtype (row-standardised genes so no single high-variance
-         gene dominates the correlation).
-      2. For every sample, Pearson-correlate its PAM50-gene vector against each subtype centroid.
-      3. MARGIN = (top-1 correlation) - (top-2 correlation). A small margin = the sample sits between
-         two subtypes = ADMIXED; a large margin = one subtype dominates = CONFIDENT.
-
-    Returns the per-sample margin (indexed by sample id). Samples that cannot be scored (all-NaN PAM50
-    vector) are dropped from the returned series.
-    """
     pam50_present = [g for g in expr.columns if g in pam50_genes]
-    # keep only the identity-defining PAM50 members for the centroid (exclude the 3 IHC mirrors that
-    # are not part of the 50-gene centroid model but are in the exclusion set)
     ihc_mirror = {"ESR1", "ERBB2", "MKI67", "PGR"}
     centroid_genes = [g for g in pam50_present if g not in ihc_mirror]
     if len(centroid_genes) < 20:
@@ -360,13 +217,11 @@ def _pam50_centroid_margin(
         )
 
     sub_expr = expr[centroid_genes].copy()
-    # row-standardise each gene across samples (z per gene) so the correlation is scale-free
     gene_mean = sub_expr.mean(axis=0)
     gene_std = sub_expr.std(axis=0).replace(0.0, np.nan)
     z = (sub_expr - gene_mean) / gene_std
     z = z.dropna(axis=1, how="all")
 
-    # build centroids from clinically-called samples of each valid subtype
     valid = subtype[subtype.isin(_VALID_SUBTYPES)]
     common = z.index.intersection(valid.index)
     z = z.loc[common]
@@ -382,19 +237,16 @@ def _pam50_centroid_margin(
             f"Subtype counts: {valid.value_counts().to_dict()}"
         )
 
-    cdf = pd.DataFrame(centroids)  # genes x subtypes
-    # correlate each sample (row of z) against each centroid; np.corrcoef per pair is slow, so do it
-    # vectorised: standardise both sides and take the dot product / n.
-    zc = z.sub(z.mean(axis=1), axis=0)  # centre each sample across genes
+    cdf = pd.DataFrame(centroids)  
+    zc = z.sub(z.mean(axis=1), axis=0)  
     zc_norm = np.sqrt((zc**2).sum(axis=1)).replace(0.0, np.nan)
-    cc = cdf.sub(cdf.mean(axis=0), axis=1)  # centre each centroid across genes
+    cc = cdf.sub(cdf.mean(axis=0), axis=1)  
     cc_norm = np.sqrt((cc**2).sum(axis=0)).replace(0.0, np.nan)
 
     corr = (zc.values @ cc.values) / (zc_norm.values[:, None] * cc_norm.values[None, :])
     corr = pd.DataFrame(corr, index=z.index, columns=cdf.columns)
 
-    # top-1 minus top-2 correlation per sample = margin
-    sorted_corr = np.sort(corr.values, axis=1)  # ascending
+    sorted_corr = np.sort(corr.values, axis=1)  
     margin = sorted_corr[:, -1] - sorted_corr[:, -2]
     margin_series = pd.Series(margin, index=corr.index, name="centroid_margin").dropna()
     return margin_series
@@ -402,7 +254,6 @@ def _pam50_centroid_margin(
 
 @dataclass
 class FloorGateOutcome:
-    """The floor-gate result + the KILL/GREENLIGHT decision (never a bare number)."""
 
     n_samples: int
     n_admixed: int
@@ -410,19 +261,13 @@ class FloorGateOutcome:
     margin_threshold: float
     n_features: int
     result: FloorGateResult
-    decision: str  # "KILL" | "GREENLIGHT" | "INDETERMINATE"
+    decision: str  
     rationale: str
 
 
 def _decide(
     result: FloorGateResult, cfg: ArmConfig, n_samples: int, n_pos: int
 ) -> tuple[str, str]:
-    """Apply the pre-registered KILL (AUROC<=0.52) / GREENLIGHT (AUROC>=0.62 AND DeLong LB>=0.52) gate.
-
-    Between the two is INDETERMINATE (real-but-weak). The DeLong lower bound must clear the config
-    greenlight_delong_ci_lb (0.52) for a GREENLIGHT so a wide-CI point estimate that merely grazes
-    0.62 does not pass.
-    """
     auroc = result.auroc
     lb = result.delong_ci95[0]
     kill = cfg.kill_threshold_auroc
@@ -455,46 +300,32 @@ def _decide(
 
 
 def run_arm2_floor_gate(cfg: ArmConfig) -> FloorGateOutcome:
-    """Build the non-PAM50 expression -> confident/admixed matrix and run the shared floor gate.
-
-    Steps: (1) load METABRIC expression + subtype; (2) construct the admixed/confident target from the
-    PAM50-gene centroid margin (target-only PAM50 use); (3) build X from NON-PAM50 top-variance genes;
-    (4) HARD leakage-guard X; (5) shared harness run (LightGBM, patient-disjoint CV, config seeds);
-    (6) KILL/GREENLIGHT decision. LightGBM (config `model: lightgbm`) is the floor learner.
-    """
     expr = _load_expression(cfg)
     subtype = _load_subtype(cfg)
 
-    # (2) target: centroid margin on PAM50 genes -> binary admixed (below cohort median margin)
     margin = _pam50_centroid_margin(expr, subtype, cfg.pam50_exclude_genes)
     thr = float(margin.median())
-    admixed = (margin < thr).astype(int)  # small margin = between subtypes = admixed = positive class
+    admixed = (margin < thr).astype(int)  
 
-    # (3) features: NON-PAM50 genes only (drop the 53-gene exclusion list), top-variance capped
     non_pam50_cols = [c for c in expr.columns if c not in cfg.pam50_exclude_genes]
     feat = expr[non_pam50_cols]
-    # samples common to target + features
     samples = sorted(set(margin.index) & set(feat.index))
     feat = feat.loc[samples]
     y = admixed.loc[samples].to_numpy()
 
-    # top-variance cap (unsupervised — no label leakage), drop all-NaN genes, mean-impute residual NaN
     feat = feat.dropna(axis=1, how="all")
     variances = feat.var(axis=0, skipna=True).fillna(0.0)
     top = variances.sort_values(ascending=False).head(_TOP_K_GENES).index
     feat = feat[top]
     feat = feat.fillna(feat.mean(axis=0))
 
-    # (4) HARD leakage gate (LOCK-2): the feature columns must carry no forbidden IHC/subtype surrogate.
     assert_no_forbidden_inputs(feat.columns)
 
     x = feat.to_numpy(dtype=float)
-    groups = np.asarray(samples)  # one row per METABRIC patient -> patient-disjoint folding is automatic
+    groups = np.asarray(samples)  
 
-    # (5) shared harness — LightGBM floor, config seeds
     result = run_floor_gate(x, y, groups, model="lightgbm", seeds=cfg.seeds)
 
-    # (6) decision
     decision, rationale = _decide(result, cfg, n_samples=len(samples), n_pos=int(y.sum()))
     return FloorGateOutcome(
         n_samples=len(samples),
@@ -508,17 +339,8 @@ def run_arm2_floor_gate(cfg: ArmConfig) -> FloorGateOutcome:
     )
 
 
-# ==================================================================================================
-# Construct-validity control: same non-PAM50 inputs, EXTERNAL IHC<->PAM50 discordance target.
-# ==================================================================================================
-# The floor-gate result (AUROC 0.767) that this control interrogates. Fixed reference so the verdict
-# text can state the collapse magnitude explicitly. Sourced from the on-disk floor-gate report/JSON.
 _FLOOR_GATE_AUROC_REF = 0.767
 
-# Shuffle-sentinel result (leakage-clean proof): the external discordance target permuted (seed 1234,
-# 3 seeds) collapses the SAME pipeline to chance. Recorded as a fixed verified constant from the run
-# so the report/JSON carry the leakage-clean evidence (real 0.884 >> shuffle 0.498 ~ 0.50). Matches
-# the project's sentinel discipline (pCR pilot 0.5019; G3 shuffle checks).
 _SHUFFLE_SENTINEL_AUROC = 0.4984
 _SHUFFLE_SENTINEL_CI = (0.4629, 0.5340)
 _SHUFFLE_SENTINEL_SEED = 1234
@@ -526,7 +348,6 @@ _SHUFFLE_SENTINEL_SEED = 1234
 
 @dataclass
 class ConstructControlOutcome:
-    """The construct-validity control result + the CIRCULAR-CONFIRMED / SURVIVES falsification verdict."""
 
     n_samples: int
     n_discordant: int
@@ -536,32 +357,13 @@ class ConstructControlOutcome:
     pam50_block_counts: dict[str, int]
     crosstab: dict[str, dict[str, int]]
     result: FloorGateResult
-    verdict: str  # "CIRCULAR-CONFIRMED" | "SURVIVES-WITH-CONTROL" | "INCONCLUSIVE"
+    verdict: str  
     rationale: str
 
 
 def _decide_construct_control(
     result: FloorGateResult, cfg: ArmConfig, n_samples: int, n_pos: int
 ) -> tuple[str, str]:
-    """Apply the FALSIFICATION verdict to the external-target result (honest — collapse is expected).
-
-    The construct-validity question is NOT the floor gate's KILL/GREENLIGHT — it is: does the arm carry
-    genuine signal about subtype ambiguity BEYOND re-deriving its own expression margin?
-
-      - SURVIVES-WITH-CONTROL: the DeLong CI lower bound is clearly above 0.50 (chance). Non-PAM50
-        expression predicts the EXTERNAL IHC<->PAM50 discordance too, so the 0.767 floor-gate signal is
-        not merely tautological — the organ tracks real subtype ambiguity.
-      - CIRCULAR-CONFIRMED: the AUROC collapses toward chance and the DeLong CI STRADDLES 0.50. The
-        floor gate predicted only its own expression-derived margin; against an RNA-independent target
-        the signal vanishes -> the original 0.767 was circular -> recommend KILL.
-      - INCONCLUSIVE: degenerate (NaN) CV only.
-
-    "CI clearly above 0.50" uses the config greenlight_delong_ci_lb (0.52) as the bar: a lower bound at
-    or above 0.52 is a real, non-chance signal; a lower bound <= 0.50 straddles chance = circular. The
-    band (0.50, 0.52) is a weak-but-nonzero grey zone reported as SURVIVES-WITH-CONTROL (weak) since the
-    CI still excludes chance. This is applied ONCE as specified — features/target are NOT tuned to avoid
-    a collapse.
-    """
     auroc = result.auroc
     lb = result.delong_ci95[0]
     chance = 0.50
@@ -601,22 +403,10 @@ def _decide_construct_control(
 
 
 def run_arm2_construct_control(cfg: ArmConfig) -> ConstructControlOutcome:
-    """Falsification control: IDENTICAL non-PAM50 inputs, target = EXTERNAL IHC<->PAM50 discordance.
-
-    Steps mirror the floor gate EXACTLY for the input side (same expression load, same 53-gene hold-out,
-    same top-variance cap, same HARD leakage guard, same shared harness), changing ONLY the target:
-      (1) load METABRIC expression + PAM50 subtype + the RNA-independent IHC receptor panel;
-      (2) build the EXTERNAL binary target = (IHC surrogate block != PAM50 block) — discordant = 1;
-      (3) build X from NON-PAM50 top-variance genes (identical construction to the floor gate);
-      (4) HARD leakage-guard X (ER/PR/HER2 live in the clinical files, never in X);
-      (5) shared harness run (LightGBM, patient-disjoint CV, config seeds);
-      (6) CIRCULAR-CONFIRMED / SURVIVES falsification verdict.
-    """
     expr = _load_expression(cfg)
     subtype = _load_subtype(cfg)
     ihc = _load_ihc_panel(cfg)
 
-    # (2) EXTERNAL target: IHC surrogate block vs PAM50 block disagreement (RNA-independent).
     valid_pam50 = subtype[subtype.isin(_PAM50_TO_BLOCK.keys())]
     common_lbl = sorted(set(valid_pam50.index) & set(ihc.index))
     if len(common_lbl) < 100:
@@ -638,7 +428,6 @@ def run_arm2_construct_control(cfg: ArmConfig) -> ConstructControlOutcome:
     discordant = (ihc_block.values != pam50_block.values).astype(int)
     target = pd.Series(discordant, index=common_lbl, name="discordant")
 
-    # (3) features: NON-PAM50 genes only, top-variance capped — IDENTICAL to the floor gate.
     non_pam50_cols = [c for c in expr.columns if c not in cfg.pam50_exclude_genes]
     feat = expr[non_pam50_cols]
     samples = sorted(set(target.index) & set(feat.index))
@@ -651,17 +440,13 @@ def run_arm2_construct_control(cfg: ArmConfig) -> ConstructControlOutcome:
     feat = feat[top]
     feat = feat.fillna(feat.mean(axis=0))
 
-    # (4) HARD leakage gate (LOCK-2): identical guard; ER/PR/HER2 are NOT in the expression matrix and
-    # their gene mirrors (ESR1/ERBB2/PGR/MKI67) are in the 53-gene hold-out, so inputs stay clean.
     assert_no_forbidden_inputs(feat.columns)
 
     x = feat.to_numpy(dtype=float)
-    groups = np.asarray(samples)  # one row per METABRIC patient -> patient-disjoint automatically
+    groups = np.asarray(samples)  
 
-    # (5) shared harness — LightGBM floor, config seeds (SAME as the floor gate).
     result = run_floor_gate(x, y, groups, model="lightgbm", seeds=cfg.seeds)
 
-    # class-balance + crosstab bookkeeping (honest prevalence reporting per the task)
     ihc_s = ihc_block.loc[samples]
     pam_s = pam50_block.loc[samples]
     crosstab: dict[str, dict[str, int]] = {}
@@ -687,9 +472,6 @@ def run_arm2_construct_control(cfg: ArmConfig) -> ConstructControlOutcome:
     )
 
 
-# ==================================================================================================
-# Reporting (markdown + JSON) — ledger-clean, provenance, leakage note, pan-subtype framing.
-# ==================================================================================================
 def _render_report(outcome: FloorGateOutcome, cfg: ArmConfig) -> str:
     today = date.today().strftime("%Y-%m-%d")
     r = outcome.result
@@ -870,9 +652,6 @@ def _render_report(outcome: FloorGateOutcome, cfg: ArmConfig) -> str:
     lines.append("")
     report = "\n".join(lines)
 
-    # HARD GATE (checklist 5a): arm 2 has no keyword rule, but run the guard as the FINAL step before
-    # writing — a defensive no-op today, and the correct integration pattern (matches the plan's
-    # "call it as the FINAL step of each arm's report-writing routine").
     validate_arm_report_keywords(report, "arm2")
     return report
 
@@ -912,16 +691,7 @@ def _metrics_payload(outcome: FloorGateOutcome, cfg: ArmConfig) -> dict:
     }
 
 
-# ==================================================================================================
-# Construct-validity control reporting — APPENDED section + separate control JSON (original kept).
-# ==================================================================================================
 def _render_construct_control_section(outcome: ConstructControlOutcome, cfg: ArmConfig) -> str:
-    """Build the '## Construct-Validity Control' section APPENDED to the existing arm 2 report.
-
-    States the CIRCULAR-CONFIRMED / SURVIVES verdict explicitly and never a bare number (AUROC +
-    DeLong CI + ECE + multi-seed + honest prevalence). Kept ledger-clean: subtype-ambiguity
-    characterisation at diagnosis; no prognosis/kinetics/early-detection/cross-institution.
-    """
     today = date.today().strftime("%Y-%m-%d")
     r = outcome.result
     auroc = "NaN" if not np.isfinite(r.auroc) else f"{r.auroc:.3f}"
@@ -1098,8 +868,6 @@ def _render_construct_control_section(outcome: ConstructControlOutcome, cfg: Arm
     lines.append("")
     section = "\n".join(lines)
 
-    # HARD GATE parity with the floor-gate report: arm 2 has no keyword rule, but run the guard as the
-    # final step before the section is written (defensive; matches the plan's report-write discipline).
     validate_arm_report_keywords(section, "arm2")
     return section
 
@@ -1160,30 +928,21 @@ def _construct_control_payload(outcome: ConstructControlOutcome, cfg: ArmConfig)
 
 
 def _run_construct_control(cfg: ArmConfig, report_dir: Path) -> int:
-    """Execute the construct-validity control: write control JSON + APPEND the report section."""
     outcome = run_arm2_construct_control(cfg)
     report_dir.mkdir(parents=True, exist_ok=True)
     stamp = date.today().strftime("%Y%m%d")
 
-    # separate control JSON (does NOT overwrite the floor-gate metrics JSON)
     control_json = report_dir / f"construct_control_{stamp}.json"
     control_json.write_text(json.dumps(_construct_control_payload(outcome, cfg), indent=2))
 
-    # APPEND the control section to the canonical arm 2 report (never overwrite the floor-gate result)
     section = _render_construct_control_section(outcome, cfg)
     canonical_report = report_dir / "arm2_REPORT_25-07-26.md"
     if canonical_report.exists():
         existing = canonical_report.read_text()
-        # Idempotent re-run: if a prior control section was already appended, split it off on the
-        # UNIQUE section heading (h2 appears nowhere else in the report) and keep only the floor-gate
-        # body. The heading is the only anchor used, so an unrelated `---` rule in the body is never
-        # matched. The `\n---` separator line that immediately precedes the heading is trimmed by
-        # rstrip() below since it is the last non-heading content before the marker.
         heading = "## Construct-Validity Control (external IHC↔PAM50 discordance)"
         head = existing
         if heading in existing:
             head = existing[: existing.index(heading)]
-            # drop the trailing `\n\n---\n\n` separator that preceded the removed heading
             head = head.rstrip().removesuffix("---").rstrip()
         canonical_report.write_text(head.rstrip() + "\n" + section)
     else:
@@ -1196,9 +955,9 @@ def _run_construct_control(cfg: ArmConfig, report_dir: Path) -> int:
         if not np.isfinite(r.delong_ci95[0])
         else f"[{r.delong_ci95[0]:.3f},{r.delong_ci95[1]:.3f}]"
     )
-    print(f"arm2 construct-control — control json: {control_json}")  # noqa: T201
-    print(f"arm2 construct-control — report appended: {canonical_report}")  # noqa: T201
-    print(  # noqa: T201
+    print(f"arm2 construct-control — control json: {control_json}")  
+    print(f"arm2 construct-control — report appended: {canonical_report}")  
+    print(  
         f"  external IHC<->PAM50 discordance: N={outcome.n_samples} discordant={outcome.n_discordant} "
         f"(prev {outcome.discordant_prevalence:.4f}) AUROC={auroc} DeLongCI={ci} ECE={r.ece:.3f} "
         f"-> {outcome.verdict}"
@@ -1206,54 +965,21 @@ def _run_construct_control(cfg: ArmConfig, report_dir: Path) -> int:
     return 0
 
 
-# ==================================================================================================
-# GREENLIGHT advance step — OOF calibration (isotonic + Platt) + SHAP top-20 (Brief B, arm 2).
-# ==================================================================================================
-# LOCK-2 calibration discipline: the shared `oof_calibrate` function fits the calibrator on ALL
-# OTHER folds' OOF predictions and scores the held-out fold — mathematically equivalent to nested
-# cross-calibration. Every patient's calibrated probability is produced by a calibrator that was
-# NEVER trained on that patient. The Track-C in-sample-leak (ADR-0010, ECE 1e-17) is blocked by
-# both the fold bookkeeping and the tripwire in `oof_calibrate` (raises LedgerViolation if
-# calibrated_ece < 0.005 — the signature of the in-sample leak).
-#
-# SHAP discipline: the shared `shap_top20` uses TreeExplainer (LightGBM) on a final model fitted to
-# the FULL feature matrix (all samples, all folds combined). This is the standard interpretation
-# practice — the OOF model is the evaluation model, but the full-data model gives stable feature
-# importances without fold-boundary artefacts. The choice is documented in the advance report.
-# Interpret features as "non-PAM50 expression features most informative for admixture characterisation
-# at diagnosis" — NEVER by PAM50 gene names (those are held out of inputs).
-
-
 @dataclass
 class AdvanceOutcome:
-    """Results of the GREENLIGHT advance step: OOF calibration (isotonic + Platt) + SHAP top-20."""
 
     n_samples: int
     n_features: int
     floor_auroc: float
     floor_ece: float
-    # OOF calibration results
-    cal_isotonic: dict  # return from oof_calibrate(method="isotonic")
-    cal_platt: dict  # return from oof_calibrate(method="platt")
-    # SHAP
-    shap_top20_rows: list[dict]  # list[{"rank", "feature", "mean_abs_shap"}]
-    # The calibrated ECE we headline: isotonic (more flexible, preferred when N>=500); Platt as check.
+    cal_isotonic: dict  
+    cal_platt: dict  
+    shap_top20_rows: list[dict]  
     calibrated_ece_isotonic: float
     calibrated_ece_platt: float
 
 
 def run_arm2_advance(cfg: ArmConfig) -> tuple[AdvanceOutcome, np.ndarray, list[str]]:
-    """GREENLIGHT advance: re-run the floor-gate to retain OOF, calibrate, compute SHAP.
-
-    Returns (AdvanceOutcome, X, feature_names) so the caller can save the PNG/CSV directly.
-    The floor gate is re-run (not loaded from disk) to get the OOF retention fields required by
-    `oof_calibrate` — the on-disk JSON is a summary and does not store the per-row OOF arrays.
-
-    Model choice for SHAP: a final LightGBM is fitted on the FULL feature matrix (same seeds[0])
-    after the OOF gate completes. This gives stable per-gene importances without fold-boundary
-    artefacts; it is NOT used for any AUROC / ECE metric (those come from the OOF gate). The choice
-    is documented in the advance report (handoff brief §SHAP rule: "last-seed or mean-seed model").
-    """
     try:
         from lightgbm import LGBMClassifier
     except ImportError as exc:
@@ -1264,7 +990,6 @@ def run_arm2_advance(cfg: ArmConfig) -> tuple[AdvanceOutcome, np.ndarray, list[s
     expr = _load_expression(cfg)
     subtype = _load_subtype(cfg)
 
-    # (1) Rebuild the identical feature matrix + target used by the floor gate.
     margin = _pam50_centroid_margin(expr, subtype, cfg.pam50_exclude_genes)
     thr = float(margin.median())
     admixed = (margin < thr).astype(int)
@@ -1286,20 +1011,15 @@ def run_arm2_advance(cfg: ArmConfig) -> tuple[AdvanceOutcome, np.ndarray, list[s
     x = feat.to_numpy(dtype=float)
     groups = np.asarray(samples)
 
-    # (2) Re-run the floor gate WITH OOF retention (Brief B harness extension).
     floor_result = run_floor_gate(x, y, groups, model="lightgbm", seeds=cfg.seeds)
 
-    # (3) OOF calibration — isotonic (non-parametric, preferred for N>=500) AND Platt (parametric
-    #     check). The LOCK-2 tripwire in oof_calibrate raises LedgerViolation if calibrated_ece < 0.005.
     cal_isotonic = oof_calibrate(floor_result, method="isotonic")
     cal_platt = oof_calibrate(floor_result, method="platt")
 
-    # (4) Final full-data model for SHAP (seed 0 for reproducibility; seeds[0] from config).
     shap_seed = cfg.seeds[0]
     final_clf = LGBMClassifier(random_state=shap_seed, n_estimators=200, verbosity=-1)
     final_clf.fit(x, y)
 
-    # (5) SHAP top-20 using the shared harness primitive.
     top20 = shap_top20(floor_result, x, feature_names, final_clf)
 
     return (
@@ -1320,7 +1040,6 @@ def run_arm2_advance(cfg: ArmConfig) -> tuple[AdvanceOutcome, np.ndarray, list[s
 
 
 def _render_advance_report(outcome: AdvanceOutcome, cfg: ArmConfig) -> str:
-    """Render the advance section: calibration comparison + SHAP framing. Ledger-clean."""
     today = date.today().strftime("%Y-%m-%d")
     iso_ece = outcome.calibrated_ece_isotonic
     platt_ece = outcome.calibrated_ece_platt
@@ -1472,13 +1191,11 @@ def _render_advance_report(outcome: AdvanceOutcome, cfg: ArmConfig) -> str:
     lines.append("")
 
     report = "\n".join(lines)
-    # HARD GATE — call the ledger keyword guard as the FINAL step before writing to disk.
     validate_arm_report_keywords(report, "arm2")
     return report
 
 
 def _advance_json_payload(outcome: AdvanceOutcome, cfg: ArmConfig, stamp: str) -> dict:
-    """JSON artifact for the advance step (advance_YYYYMMDD.json)."""
     return {
         "arm": 2,
         "analysis": "advance-calibration-shap",
@@ -1521,7 +1238,6 @@ def _advance_json_payload(outcome: AdvanceOutcome, cfg: ArmConfig, stamp: str) -
 
 
 def _render_advance_report_section(outcome: AdvanceOutcome) -> str:
-    """Compact section APPENDED to arm2_REPORT_25-07-26.md."""
     today = date.today().strftime("%Y-%m-%d")
     iso_ece = outcome.calibrated_ece_isotonic
     platt_ece = outcome.calibrated_ece_platt
@@ -1576,10 +1292,6 @@ def _save_shap_artifacts(
     report_dir: Path,
     stamp: str,
 ) -> tuple[Path, Path | None]:
-    """Save SHAP top-20 as CSV (always) and PNG (if matplotlib available).
-
-    Returns (csv_path, png_path_or_None).
-    """
     import csv
 
     csv_path = report_dir / f"arm2_shap_top20_{stamp}.csv"
@@ -1591,12 +1303,11 @@ def _save_shap_artifacts(
     png_path: Path | None = None
     try:
         import matplotlib
-        matplotlib.use("Agg")  # non-interactive backend — safe in headless environments
+        matplotlib.use("Agg")  
         import matplotlib.pyplot as plt
 
         genes = [row["feature"] for row in shap_rows[:20]]
         vals = [row["mean_abs_shap"] for row in shap_rows[:20]]
-        # Reverse so the highest-importance gene is at the top of the horizontal bar chart.
         genes_rev = genes[::-1]
         vals_rev = vals[::-1]
 
@@ -1613,38 +1324,31 @@ def _save_shap_artifacts(
         fig.savefig(png_path, dpi=120)
         plt.close(fig)
     except ImportError:
-        # matplotlib not available — CSV is written; report the gap honestly.
         png_path = None
 
     return csv_path, png_path
 
 
 def _run_advance(cfg: ArmConfig, report_dir: Path) -> int:
-    """Execute the GREENLIGHT advance step and write all required artifacts."""
-    print("arm2 advance — re-running floor gate to retain OOF predictions (calibration + SHAP)...")  # noqa: T201
+    print("arm2 advance — re-running floor gate to retain OOF predictions (calibration + SHAP)...")  
     outcome, x, feature_names = run_arm2_advance(cfg)
 
     report_dir.mkdir(parents=True, exist_ok=True)
     stamp = date.today().strftime("%Y%m%d")
 
-    # (1) Standalone advance JSON.
     json_path = report_dir / f"advance_{stamp}.json"
     json_path.write_text(json.dumps(_advance_json_payload(outcome, cfg, stamp), indent=2))
 
-    # (2) Standalone advance markdown report.
     md_path = report_dir / f"advance_{stamp}.md"
     md_path.write_text(_render_advance_report(outcome, cfg))
 
-    # (3) SHAP artifacts: CSV (always) + PNG (if matplotlib available).
     csv_path, png_path = _save_shap_artifacts(outcome.shap_top20_rows, report_dir, stamp)
 
-    # (4) APPEND advance section to the canonical arm 2 report.
     canonical_report = report_dir / "arm2_REPORT_25-07-26.md"
     advance_section = _render_advance_report_section(outcome)
     advance_heading = "## GREENLIGHT Advance (OOF Calibration + SHAP)"
     if canonical_report.exists():
         existing = canonical_report.read_text()
-        # Idempotent: remove any previously appended advance section before re-appending.
         if advance_heading in existing:
             head = existing[: existing.index(advance_heading)]
             existing = head.rstrip().removesuffix("---").rstrip()
@@ -1652,20 +1356,19 @@ def _run_advance(cfg: ArmConfig, report_dir: Path) -> int:
     else:
         canonical_report.write_text(advance_section.lstrip())
 
-    # --- Console summary ---
-    print(f"arm2 advance — advance JSON: {json_path}")  # noqa: T201
-    print(f"arm2 advance — advance report: {md_path}")  # noqa: T201
-    print(f"arm2 advance — SHAP CSV: {csv_path}")  # noqa: T201
+    print(f"arm2 advance — advance JSON: {json_path}")  
+    print(f"arm2 advance — advance report: {md_path}")  
+    print(f"arm2 advance — SHAP CSV: {csv_path}")  
     if png_path is not None:
-        print(f"arm2 advance — SHAP PNG: {png_path}")  # noqa: T201
+        print(f"arm2 advance — SHAP PNG: {png_path}")  
     else:
-        print("arm2 advance — SHAP PNG: skipped (matplotlib unavailable — CSV written)")  # noqa: T201
-    print(f"arm2 advance — report section appended: {canonical_report}")  # noqa: T201
-    print(  # noqa: T201
+        print("arm2 advance — SHAP PNG: skipped (matplotlib unavailable — CSV written)")  
+    print(f"arm2 advance — report section appended: {canonical_report}")  
+    print(  
         f"  ECE raw={outcome.floor_ece:.4f} | calibrated-isotonic={outcome.calibrated_ece_isotonic:.4f} "
         f"| calibrated-platt={outcome.calibrated_ece_platt:.4f}"
     )
-    print(  # noqa: T201
+    print(  
         "  SHAP top-5: "
         + ", ".join(
             f"{row['feature']} ({row['mean_abs_shap']:.4f})"
@@ -1682,8 +1385,7 @@ def main(argv: list[str] | None = None) -> int:
     data_root = Path(args.data_root).resolve() if args.data_root else _REPO_ROOT
 
     if not args.floor_gate and not args.construct_control and not args.advance:
-        # Default action is the floor gate; the flag exists for parity with the other arm CLIs.
-        print(  # noqa: T201
+        print(  
             f"arm2: {_PURPOSE}. Pass --floor-gate to run the patient-disjoint LightGBM floor gate, "
             "--construct-control to run the external IHC<->PAM50 discordance falsification control, "
             "or --advance to run the GREENLIGHT advance step (OOF calibration + SHAP top-20)."
@@ -1693,23 +1395,21 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cfg = _resolve_config(cfg_raw, data_root)
     except (FileNotFoundError, ValueError) as exc:
-        print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"BLOCKED: {exc}", file=sys.stderr)  
         return 2
 
-    # GREENLIGHT advance step: OOF calibration (isotonic + Platt) + SHAP top-20.
     if args.advance:
         try:
             return _run_advance(cfg, Path(args.report_dir))
         except (FileNotFoundError, ValueError) as exc:
-            print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"BLOCKED: {exc}", file=sys.stderr)  
             return 2
 
-    # Construct-validity control: external RNA-independent target, alongside the floor-gate result.
     if args.construct_control:
         try:
             return _run_construct_control(cfg, Path(args.report_dir))
         except (FileNotFoundError, ValueError) as exc:
-            print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"BLOCKED: {exc}", file=sys.stderr)  
             return 2
 
     outcome = run_arm2_floor_gate(cfg)
@@ -1722,7 +1422,6 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(_render_report(outcome, cfg))
     metrics_path.write_text(json.dumps(_metrics_payload(outcome, cfg), indent=2))
 
-    # Console summary (the runnable "every gate produces a number" contract).
     r = outcome.result
     auroc = "NaN" if not np.isfinite(r.auroc) else f"{r.auroc:.3f}"
     ci = (
@@ -1730,8 +1429,8 @@ def main(argv: list[str] | None = None) -> int:
         if not np.isfinite(r.delong_ci95[0])
         else f"[{r.delong_ci95[0]:.3f},{r.delong_ci95[1]:.3f}]"
     )
-    print(f"arm2 floor gate — report: {report_path}")  # noqa: T201
-    print(  # noqa: T201
+    print(f"arm2 floor gate — report: {report_path}")  
+    print(  
         f"  confident-vs-admixed: N={outcome.n_samples} admixed={outcome.n_admixed} "
         f"AUROC={auroc} DeLongCI={ci} ECE={r.ece:.3f} -> {outcome.decision}"
     )

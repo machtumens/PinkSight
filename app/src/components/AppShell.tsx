@@ -19,7 +19,6 @@ const nav = [
 export default function AppShell() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      {/* Rail — native-desktop nav, not a web hamburger */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
         <div className="flex items-center gap-2 px-4 py-4">
           <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -55,7 +54,6 @@ export default function AppShell() {
         </div>
       </aside>
 
-      {/* Work surface */}
       <main className="flex-1 overflow-y-auto bg-background">
         <InferenceModeProvider>
           <Outlet />

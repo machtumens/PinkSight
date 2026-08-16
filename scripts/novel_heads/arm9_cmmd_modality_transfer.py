@@ -1,54 +1,3 @@
-"""Arm 9 (Wave 2) — CMMD modality-transfer null test. FLOOR GATE (patient-disjoint CV).
-
-Purpose (one line): run an INDEPENDENT NULL REPLICATION of the imaging->subtype question on a
-different modality and population (CMMD full-field digital mammography, Luminal A vs triple-negative)
-via a FRESH pyradiomics -> elastic-net floor trained + evaluated ENTIRELY ON CMMD -> AUROC + DeLong CI
-+ ECE + multi-seed + a shuffle sentinel. The G3 gate characterised the imaging->subtype signal as an
-information ceiling on Duke DCE-MRI (ADR-0008). This arm asks the SAME science question on a wholly
-different modality (FFDM, not DCE-MRI) and a different cohort (Chinese mammography, not Duke): does a
-cheap radiomics floor separate two molecular subtypes above chance? A null here is an INDEPENDENT NULL
-REPLICATION that corroborates the G3 imaging->subtype finding across modalities; a clearance is an
-unexpected FFDM signal (NEW HYPOTHESIS only). Both outcomes are informative and reportable.
-
-Ledger guard (LOCK-1, YELLOW — framing critical): the framing is "independent null replication on
-CMMD full-field digital mammography." The Duke-trained model is NEVER applied to CMMD — a FRESH floor
-is trained on CMMD only, reported on its own internal patient-disjoint split. No claim that a Duke
-model works on CMMD, and no claim about performance moving between institutions, is made or implied.
-The report-write step MUST call `wave1_eval_harness.validate_arm_report_keywords(report_text, "arm9")`
-(a hard gate: raises / exits nonzero on "generalises to" / "generalizes to" / "Duke model" /
-"transfers to Duke" / "cross-institution"; requires the phrase "independent null replication") as the
-FINAL step before the report is written to disk. Any model trained on CMMD + applied to Duke would
-need a NEW ADR (LOCK-1 amendment) — out of scope here.
-
-Data (public, TCIA collection CMMD; staged under data/cmmd/ — gitignored, never committed):
-  - CMMD_clinicaldata_revision.xlsx  — per-patient subtype label (Luminal A / Luminal B / HER2-enriched
-    / triple negative) + affected LeftRight + abnormality/classification. 749 subtype-labelled patients
-    (of 1775 total); the LumA-vs-TNBC task uses 152 Luminal A + 86 triple negative = 238 patients.
-  - images/<PatientID>/*.dcm       — full-field digital mammography (MG modality). Each subtyped
-    patient has one series of 2 or 4 images (CC + MLO of one or both breasts). Radiomics is extracted
-    ONLY from images matching the affected-breast laterality (clinical LeftRight); the contralateral
-    breast is excluded.
-Provenance: The Chinese Mammography Database (CMMD), TCIA, CC BY-NC 3.0 (Cai et al. 2021 /
-Cui et al. 2021). Staged from the public NBIA REST API (no authentication) + the TCIA wiki clinical
-spreadsheet. A separate TCIA collection from Duke DCE-MRI: different modality (FFDM vs DCE-MRI),
-different institution — CMMD and Duke share zero patients by construction (dedup is trivially TRUE).
-
-Eval integrity (LOCK-2, decisions.md / plan Shared Evaluation Spine):
-  - PATIENT-level CV — each patient is one unit; the shared harness folds by patient id, so no patient
-    straddles a train/val boundary.
-  - Radiomics-first, cheap: pyradiomics first-order + GLCM + GLRLM texture on a whole-breast-region
-    mask (Otsu + largest connected component). NO lesion localisation is performed or claimed (that
-    would be a detection endpoint); the mask is the breast tissue region, and the target is a molecular
-    subtype characterisation label, not a healthy-tissue endpoint.
-  - Leakage guard: pyradiomics texture features ONLY as inputs; ER/PR/HER2/Ki-67/subtype are never
-    features (subtype is the TARGET). The shared `assert_no_forbidden_inputs` runs on the feature
-    columns before every fit.
-  - Shuffle sentinel: the label is permuted and the whole floor is re-run; a real signal collapses to
-    chance under shuffle, a leakage artefact does not (mirrors arm 4 / arm 8 / arm 10).
-  - Never a bare number: AUROC + DeLong 95% CI + ECE at >= 3 seeds (shared wave1_eval_harness).
-
-Plan: process/general-plans/active/novel-heads-roadmap_25-07-26/novel-heads-roadmap_PLAN_25-07-26.md
-"""
 
 from __future__ import annotations
 
@@ -63,25 +12,23 @@ import numpy as np
 import pandas as pd
 import yaml
 
-# Repo root on sys.path so `pinksight` + the sibling harness import when run as a bare script.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from scripts.novel_heads.wave1_eval_harness import (  # noqa: E402
+from scripts.novel_heads.wave1_eval_harness import (  
     FloorGateResult,
     run_floor_gate,
     validate_arm_report_keywords,
 )
-from tests.test_novel_heads_leakage import assert_no_forbidden_inputs  # noqa: E402
+from tests.test_novel_heads_leakage import assert_no_forbidden_inputs  
 
 _PURPOSE = (
     "independent null replication of imaging->subtype on CMMD FFDM (fresh CMMD-only radiomics floor)"
 )
 
-# --- Dataset identity (TCIA CMMD) ------------------------------------------------------------------
 _COLLECTION = "CMMD"
 _NBIA_BASE = "https://services.cancerimagingarchive.net/nbia-api/services/v1"
 _CLINICAL_URL = (
@@ -91,30 +38,20 @@ _CLINICAL_URL = (
 _CLINICAL_NAME = "CMMD_clinicaldata_revision.xlsx"
 _LICENSE = "CC BY-NC 3.0"
 
-# Staged layout under the (gitignored) data root.
 _STAGED_SUBDIR = Path("data") / "cmmd"
 _CLINICAL_REL = _STAGED_SUBDIR / _CLINICAL_NAME
 _IMAGES_REL = _STAGED_SUBDIR / "images"
 
-# --- Task (the direct PinkSight subtype axis: Luminal A vs triple negative) -------------------------
-_POSITIVE_SUBTYPE = "Luminal A"  # label 1
-_NEGATIVE_SUBTYPE = "triple negative"  # label 0 (CMMD's TNBC label)
+_POSITIVE_SUBTYPE = "Luminal A"  
+_NEGATIVE_SUBTYPE = "triple negative"  
 
-# Floor model — elastic-net logistic (harness `_MODELS["elasticnet"]`), mirroring arm 6 / arm 10. It
-# is the robust learner for the radiomics feature space and the only floor model available without
-# adding an undeclared dependency (LightGBM is not in pyproject; scikit-learn IS). The config's
-# `model: lightgbm` field is the nominal spec; this is the model actually run (recorded in the report).
 _FLOOR_MODEL = "elasticnet"
 
-# Radiomics feature-count cap (unsupervised top-variance select). Pyradiomics first-order + GLCM +
-# GLRLM yields ~50-70 features; at N=238 that is comfortable, but we cap defensively so a future
-# larger feature class cannot silently blow up the p:n ratio. Ranking uses only X (no label leakage).
 _TOP_K_FEATURES = 60
 
 
 @dataclass(frozen=True)
 class ArmConfig:
-    """Parsed arm-9 config knobs the floor gate needs (thresholds + seeds)."""
 
     seeds: tuple[int, ...]
     kill_threshold_auroc: float
@@ -165,7 +102,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_arm_config(cfg_raw: dict) -> ArmConfig:
-    """Read the arm-9 thresholds + seeds from the config (with plan-spec defaults)."""
     seeds = tuple(int(s) for s in cfg_raw.get("seeds", (0, 1, 2)))
     return ArmConfig(
         seeds=seeds,
@@ -175,22 +111,11 @@ def _parse_arm_config(cfg_raw: dict) -> ArmConfig:
     )
 
 
-# ==================================================================================================
-# Clinical table — the per-patient subtype label + affected laterality. This is the label source; it
-# is staged from the TCIA wiki. The LumA-vs-TNBC task keeps only the two target subtypes.
-# ==================================================================================================
 def _clinical_path(data_root: Path) -> Path:
     return data_root / _CLINICAL_REL
 
 
 def _load_task_table(data_root: Path, limit: int | None = None) -> pd.DataFrame:
-    """Load the CMMD clinical spreadsheet and reduce it to the LumA-vs-TNBC patient task table.
-
-    Returns a frame with one row per patient: ID1 (patient id), LeftRight (affected breast), subtype,
-    and a binary `y` (1 = Luminal A, 0 = triple negative). Every subtyped CMMD patient has exactly one
-    row (one affected breast), so patient id is a clean grouping key. `limit` caps the rows for smoke
-    testing only. Raises FileNotFoundError (honest BLOCKED) if the clinical file is not staged.
-    """
     path = _clinical_path(data_root)
     if not path.exists():
         raise FileNotFoundError(
@@ -201,30 +126,19 @@ def _load_task_table(data_root: Path, limit: int | None = None) -> pd.DataFrame:
     df = pd.read_excel(path)
     df["subtype"] = df["subtype"].astype("string").str.strip()
     task = df[df["subtype"].isin([_POSITIVE_SUBTYPE, _NEGATIVE_SUBTYPE])].copy()
-    # one row per subtyped patient in CMMD; keep first defensively if a duplicate ever appears
     task = task.drop_duplicates("ID1", keep="first").reset_index(drop=True)
     task["LeftRight"] = task["LeftRight"].astype("string").str.strip().str.upper()
     task["y"] = (task["subtype"] == _POSITIVE_SUBTYPE).astype(int)
     task = task[["ID1", "LeftRight", "Age", "abnormality", "classification", "subtype", "y"]]
     if limit is not None:
-        # keep a class-balanced-ish slice for smoke testing (interleave pos/neg)
         pos = task[task["y"] == 1].head(max(1, limit // 2))
         neg = task[task["y"] == 0].head(max(1, limit - len(pos)))
         task = pd.concat([pos, neg]).reset_index(drop=True)
     return task
 
 
-# ==================================================================================================
-# Data staging (TCIA NBIA REST getImage) — idempotent, resumable, network-honest.
-# ==================================================================================================
 def _series_index(patient_ids: list[str]) -> dict[str, str]:
-    """Map each requested patient id -> its CMMD SeriesInstanceUID (one MG series per patient).
-
-    Uses the public NBIA getSeries endpoint filtered to the CMMD collection. Returns only the patients
-    that resolve to a series (missing patients are dropped and surfaced by the caller). Network errors
-    propagate so a staging run fails loudly (never fabricates a series list).
-    """
-    import requests  # local import: staging-only dependency
+    import requests  
 
     resp = requests.get(
         f"{_NBIA_BASE}/getSeries", params={"Collection": _COLLECTION}, timeout=180
@@ -240,13 +154,6 @@ def _series_index(patient_ids: list[str]) -> dict[str, str]:
 
 
 def _download_series(uid: str, dest: Path) -> int:
-    """Download + extract one CMMD series (getImage zip) into dest. Returns the .dcm count.
-
-    Crash-safe: streams to a .part, verifies it is a real zip, extracts, removes the archive. A series
-    is only considered staged when >=1 .dcm is present and no leftover archive remains. Raises on a
-    hard failure (404 / corrupt zip / network) so the staging loop can log + skip that patient without
-    fabricating images.
-    """
     import io
     import zipfile
 
@@ -283,32 +190,24 @@ def _is_patient_staged(data_root: Path, pid: str) -> bool:
 
 
 def stage_cmmd(data_root: Path, limit: int | None = None) -> dict:
-    """Stage the CMMD clinical file + the affected-breast DICOM for the LumA/TNBC patients.
-
-    Idempotent + resumable: the clinical spreadsheet is fetched once; each patient's series is skipped
-    when its dir already holds >=1 .dcm. Patients whose series 404s or fails are logged and skipped
-    (honest gap, never faked). Returns a staging summary dict (counts + skipped patient ids).
-    """
     import requests
 
     data_root.mkdir(parents=True, exist_ok=True)
     (data_root / _STAGED_SUBDIR).mkdir(parents=True, exist_ok=True)
 
-    # 1) clinical spreadsheet (label source) — fetch once.
     clinical = _clinical_path(data_root)
     if not clinical.exists():
         clinical.parent.mkdir(parents=True, exist_ok=True)
         resp = requests.get(_CLINICAL_URL, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
         clinical.write_bytes(resp.content)
-        print(f"arm9 stage: clinical spreadsheet -> {clinical} ({len(resp.content)} bytes)")  # noqa: T201
+        print(f"arm9 stage: clinical spreadsheet -> {clinical} ({len(resp.content)} bytes)")  
     else:
-        print(f"arm9 stage: clinical spreadsheet already present ({clinical})")  # noqa: T201
+        print(f"arm9 stage: clinical spreadsheet already present ({clinical})")  
 
-    # 2) resolve the LumA/TNBC patient task table + their series uids.
     task = _load_task_table(data_root, limit=limit)
     patient_ids = task["ID1"].tolist()
-    print(  # noqa: T201
+    print(  
         f"arm9 stage: {len(patient_ids)} LumA/TNBC patients "
         f"({int(task['y'].sum())} {_POSITIVE_SUBTYPE} / {int((task['y'] == 0).sum())} "
         f"{_NEGATIVE_SUBTYPE}); resolving series uids ..."
@@ -345,27 +244,18 @@ def stage_cmmd(data_root: Path, limit: int | None = None) -> dict:
         "missing_series_uid": missing_series,
         "failure_detail": download_failures,
     }
-    print(  # noqa: T201
+    print(  
         f"arm9 stage DONE: {staged} newly staged, {skipped_existing} already present, "
         f"{failed} failed, {len(missing_series)} missing series uid."
     )
     return summary
 
 
-# ==================================================================================================
-# Radiomics — whole-breast-region texture on the affected-breast FFDM images.
-# ==================================================================================================
 def _affected_side_token(left_right: str) -> str:
-    """Map the clinical LeftRight ('L'/'R') to the DICOM ImageLaterality token ('L'/'R')."""
     return "L" if str(left_right).strip().upper().startswith("L") else "R"
 
 
 def _read_dicom_image(path: Path):
-    """Read one CMMD .dcm as a 2-D SimpleITK image + its ImageLaterality tag ('L'/'R'/'?').
-
-    CMMD images are stored as (1, H, W); we squeeze the singleton z so pyradiomics treats them as 2-D.
-    ImageLaterality is DICOM tag (0020,0062); missing/blank -> '?'.
-    """
     import SimpleITK as sitk
 
     reader = sitk.ImageFileReader()
@@ -377,7 +267,6 @@ def _read_dicom_image(path: Path):
     except RuntimeError:
         laterality = "?"
     img = reader.Execute()
-    # squeeze a leading singleton dimension (1,H,W) -> (H,W) for 2-D radiomics
     arr = sitk.GetArrayFromImage(img)
     if arr.ndim == 3 and arr.shape[0] == 1:
         arr = arr[0]
@@ -386,31 +275,17 @@ def _read_dicom_image(path: Path):
 
 
 def _breast_region_mask(img):
-    """Otsu whole-breast-region mask (largest connected component) — NOT a lesion segmentation.
-
-    Segments the breast tissue from the (near-black) background of a mammogram: Otsu threshold, keep
-    the largest connected foreground component (the breast), binary-close small holes. This is a
-    breast-REGION mask for texture extraction; no lesion is localised (localisation would be a
-    detection endpoint, FORBIDDEN). Returns a uint8 SimpleITK label image (label 1 = breast region).
-    """
     import SimpleITK as sitk
 
-    otsu = sitk.OtsuThreshold(img, 0, 1)  # 1 = foreground (breast), 0 = background
-    # largest connected component = the breast (drops small bright specks / annotations)
+    otsu = sitk.OtsuThreshold(img, 0, 1)  
     cc = sitk.ConnectedComponent(otsu)
     relabel = sitk.RelabelComponent(cc, sortByObjectSize=True)
     largest = sitk.BinaryThreshold(relabel, 1, 1, 1, 0)
-    # close small holes so texture is computed over a solid region
     closed = sitk.BinaryMorphologicalClosing(largest, [3, 3])
     return sitk.Cast(closed, sitk.sitkUInt8)
 
 
 def _build_extractor():
-    """Configure a pyradiomics extractor: first-order + GLCM + GLRLM, 2-D, fixed bin width.
-
-    A cheap, standard radiomics floor feature set (texture + intensity). 2-D force (mammograms are
-    single-slice), bin width 25 on the 0-255 grayscale, small resampling off (FFDM already in-plane).
-    """
     from radiomics.featureextractor import RadiomicsFeatureExtractor
 
     settings = {
@@ -430,12 +305,6 @@ def _build_extractor():
 
 
 def _is_numeric_scalar(value) -> bool:
-    """True if a pyradiomics result value is a finite numeric scalar (Python scalar OR 0-d ndarray).
-
-    Pyradiomics feature values come back as 0-d numpy arrays (shape ()), for which the stdlib/numpy
-    `np.isscalar` is False; the `diagnostics_*` provenance entries are strings/tuples. `np.ndim == 0`
-    accepts real scalars and 0-d arrays while rejecting strings only after a numeric coercion check.
-    """
     try:
         if np.ndim(value) != 0:
             return False
@@ -447,13 +316,6 @@ def _is_numeric_scalar(value) -> bool:
 def _extract_patient_features(
     extractor, patient_dir: Path, affected_side: str
 ) -> dict[str, float] | None:
-    """Extract mean pyradiomics texture over a patient's affected-breast FFDM images.
-
-    Reads every .dcm in the patient dir, keeps those whose ImageLaterality matches the affected side
-    (the clinical LeftRight), extracts radiomics on the whole-breast-region mask for each, and averages
-    the numeric feature vectors across the affected-side images (patient = one unit). Returns None if
-    the patient has no readable affected-side image (surfaced as an honest drop by the caller).
-    """
     want = _affected_side_token(affected_side)
     per_image: list[dict[str, float]] = []
     for dcm in sorted(patient_dir.rglob("*.dcm")):
@@ -461,7 +323,6 @@ def _extract_patient_features(
             img, laterality = _read_dicom_image(dcm)
         except (RuntimeError, OSError):
             continue
-        # keep affected side; if the tag is unknown, keep it (do not silently drop the only image)
         if laterality not in (want, "?"):
             continue
         try:
@@ -469,9 +330,6 @@ def _extract_patient_features(
             result = extractor.execute(img, mask)
         except (ValueError, RuntimeError):
             continue
-        # pyradiomics returns feature values as 0-d numpy arrays (shape ()), so `np.isscalar` is False
-        # for them — filter on `np.ndim(v) == 0` (true for Python scalars AND 0-d arrays) and drop the
-        # `diagnostics_*` provenance keys (strings). Coerce to float; skip non-finite.
         feats = {
             k: float(v)
             for k, v in result.items()
@@ -485,12 +343,8 @@ def _extract_patient_features(
     return {k: float(np.mean([d[k] for d in per_image if k in d])) for k in keys}
 
 
-# ==================================================================================================
-# Feature matrix assembly — patient-level, leakage-guarded, top-variance capped.
-# ==================================================================================================
 @dataclass
 class FeatureMatrix:
-    """The patient-level radiomics matrix + binary subtype label + patient ids + drop bookkeeping."""
 
     X: np.ndarray
     y: np.ndarray
@@ -503,13 +357,6 @@ class FeatureMatrix:
 
 
 def build_feature_matrix(data_root: Path, task: pd.DataFrame) -> FeatureMatrix:
-    """Build the CMMD LumA-vs-TNBC patient radiomics matrix from the staged affected-breast images.
-
-    For each patient in the task table, extract mean affected-breast texture (skipping patients with no
-    staged/readable image). Impute residual NaN per feature (median), drop zero-variance columns, cap to
-    the top-variance `_TOP_K_FEATURES` (unsupervised — no label leakage), and run the HARD leakage guard
-    on the final column names. Patients that yield no features are dropped and recorded (honest N).
-    """
     extractor = _build_extractor()
     rows: list[dict[str, float]] = []
     ys: list[int] = []
@@ -542,16 +389,13 @@ def build_feature_matrix(data_root: Path, task: pd.DataFrame) -> FeatureMatrix:
         )
 
     frame = pd.DataFrame(rows)
-    # median-impute residual NaN, drop zero-variance columns
     frame = frame.fillna(frame.median(axis=0))
     variances = frame.var(axis=0, numeric_only=True)
     frame = frame.loc[:, variances[variances > 0].index]
-    # top-variance cap (unsupervised — uses X only, never y)
     if frame.shape[1] > _TOP_K_FEATURES:
         top = frame.var(axis=0).sort_values(ascending=False).head(_TOP_K_FEATURES).index
         frame = frame.loc[:, sorted(top)]
 
-    # HARD leakage gate (LOCK-2): radiomics columns must carry no forbidden IHC/subtype surrogate.
     assert_no_forbidden_inputs(frame.columns)
 
     y = np.asarray(ys, dtype=int)
@@ -567,25 +411,17 @@ def build_feature_matrix(data_root: Path, task: pd.DataFrame) -> FeatureMatrix:
     )
 
 
-# ==================================================================================================
-# Floor gate — LumA vs TNBC on the CMMD radiomics matrix, with a shuffle sentinel + KILL/GREENLIGHT.
-# ==================================================================================================
 @dataclass
 class GateOutcome:
-    """The CMMD floor-gate result + shuffle sentinel + KILL/GREENLIGHT decision (never a bare number)."""
 
     task: str
     matrix: FeatureMatrix
     result: FloorGateResult
     shuffle_auroc: float
-    decision: str  # "KILL" | "GREENLIGHT" | "INDETERMINATE" | "BLOCKED"
+    decision: str  
     rationale: str
 
 
-# A result whose DeLong CI crosses 0.50 AND whose real AUROC sits within this margin of the shuffle
-# sentinel is statistically indistinguishable from chance — a genuine leak-free null — even if the
-# bare point estimate grazes a hair above the 0.52 point threshold. This is the project's standard
-# shuffle-sentinel reading (real ≈ shuffle ≈ chance => null), more principled than a bare cutpoint.
 _NULL_SHUFFLE_MARGIN = 0.03
 
 
@@ -597,17 +433,6 @@ def _decide(
     n_neg: int,
     shuffle_auroc: float,
 ) -> tuple[str, str]:
-    """Classify the CMMD floor: NULL-REPLICATION (KILL semantics) / GREENLIGHT / INDETERMINATE.
-
-    For arm 9 a null is the POSITIVE science outcome — an independent replication of the G3
-    imaging->subtype finding on FFDM. Two paths reach it: (1) the pre-registered plan gate
-    AUROC <= 0.52; OR (2) the statistical-null path — the DeLong CI crosses 0.50 AND the real AUROC is
-    within `_NULL_SHUFFLE_MARGIN` of the shuffle sentinel (real ≈ shuffle ≈ chance, the project's
-    standard shuffle reading). Path (2) is what stops a fractional excess over the bare 0.52 point from
-    masquerading as "real-but-weak" when the CI and the shuffle both say chance. A GREENLIGHT
-    (AUROC >= 0.62, DeLong LB >= 0.50) is an unexpected FFDM signal (NEW HYPOTHESIS only, never a
-    cross-cohort claim). Genuinely between-the-thresholds-with-a-CI-clearing-0.50 stays INDETERMINATE.
-    """
     auroc = result.auroc
     lb = result.delong_ci95[0]
     hi = result.delong_ci95[1]
@@ -659,15 +484,6 @@ def _decide(
 
 
 def run_arm9_floor_gate(cfg: ArmConfig, data_root: Path, limit: int | None = None) -> GateOutcome:
-    """Build the CMMD LumA-vs-TNBC radiomics matrix and run the shared floor gate + shuffle sentinel.
-
-    Steps: (1) load the task table; (2) build the patient-level affected-breast radiomics matrix
-    (leakage-guarded, top-variance capped); (3) guard against a below-floor N; (4) shared harness
-    (elastic-net, patient-disjoint CV, config seeds) for the real labels; (5) a shuffle sentinel
-    (permuted labels, same pipeline, seed 0) to prove the signal is not a leakage artefact;
-    (6) KILL/GREENLIGHT decision. Raises FileNotFoundError (honest BLOCKED) if the clinical file is
-    absent.
-    """
     task = _load_task_table(data_root, limit=limit)
     matrix = build_feature_matrix(data_root, task)
     task_label = f"{_POSITIVE_SUBTYPE} vs {_NEGATIVE_SUBTYPE} (CMMD FFDM, affected-breast radiomics)"
@@ -699,8 +515,6 @@ def run_arm9_floor_gate(cfg: ArmConfig, data_root: Path, limit: int | None = Non
 
     result = run_floor_gate(matrix.X, matrix.y, matrix.groups, model=_FLOOR_MODEL, seeds=cfg.seeds)
 
-    # Shuffle sentinel: permute the labels (seed 0) and re-run one seed; a real signal collapses to
-    # ~0.50, a leakage artefact stays high. Patient grouping is preserved (permute at patient level).
     rng = np.random.default_rng(0)
     y_shuffled = matrix.y.copy()
     rng.shuffle(y_shuffled)
@@ -720,9 +534,6 @@ def run_arm9_floor_gate(cfg: ArmConfig, data_root: Path, limit: int | None = Non
     )
 
 
-# ==================================================================================================
-# Reporting (markdown + JSON) — ledger-clean framing guard, provenance, shuffle sentinel, dedup.
-# ==================================================================================================
 def _render_report(outcome: GateOutcome, cfg: ArmConfig, data_root: Path) -> str:
     today = date.today().strftime("%Y-%m-%d")
     r = outcome.result
@@ -1017,8 +828,7 @@ def _metrics_payload(outcome: GateOutcome, cfg: ArmConfig, data_root: Path) -> d
 
 
 def _run_dedup_check() -> int:
-    """LOCK-2 dedup: CMMD ∩ Duke = 0 (trivially true — separate collection, FFDM vs DCE-MRI)."""
-    print(  # noqa: T201
+    print(  
         "arm9 dedup check (LOCK-2): CMMD ∩ Duke = 0. CMMD is a separate TCIA collection "
         "(full-field digital mammography); Duke is DCE-MRI. Different institution + different "
         "modality => zero shared patients by construction. PASS."
@@ -1039,14 +849,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage:
         try:
             stage_cmmd(data_root, limit=args.limit_patients)
-        except Exception as exc:  # noqa: BLE001 — staging must surface the exact network/BLOCKED reason
-            print(f"BLOCKED: arm9 staging failed — {type(exc).__name__}: {exc}", file=sys.stderr)  # noqa: T201
+        except Exception as exc:  
+            print(f"BLOCKED: arm9 staging failed — {type(exc).__name__}: {exc}", file=sys.stderr)  
             return 2
         if not args.floor_gate:
             return 0
 
     if not args.floor_gate:
-        print(  # noqa: T201
+        print(  
             f"arm9: {_PURPOSE}. Pass --stage to fetch CMMD (clinical + affected-breast DICOM), "
             f"--floor-gate to run the radiomics floor gate, or --dedup-check for the LOCK-2 check."
         )
@@ -1055,12 +865,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         outcome = run_arm9_floor_gate(cfg, data_root, limit=args.limit_patients)
     except FileNotFoundError as exc:
-        print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"BLOCKED: {exc}", file=sys.stderr)  
         return 2
 
-    # Build the report text and run the HARD framing guard BEFORE writing anything to disk.
     report_text = _render_report(outcome, cfg, data_root)
-    validate_arm_report_keywords(report_text, "arm9")  # raises LedgerViolation on a framing breach
+    validate_arm_report_keywords(report_text, "arm9")  
 
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -1070,7 +879,6 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(report_text)
     metrics_path.write_text(json.dumps(_metrics_payload(outcome, cfg, data_root), indent=2))
 
-    # Console summary (the runnable "every gate produces a number" contract).
     r = outcome.result
     auroc = "NaN" if not np.isfinite(r.auroc) else f"{r.auroc:.3f}"
     ci = (
@@ -1080,8 +888,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     ece = "NaN" if not np.isfinite(r.ece) else f"{r.ece:.3f}"
     shuffle = "NaN" if not np.isfinite(outcome.shuffle_auroc) else f"{outcome.shuffle_auroc:.3f}"
-    print(f"arm9 floor gate — report: {report_path}")  # noqa: T201
-    print(  # noqa: T201
+    print(f"arm9 floor gate — report: {report_path}")  
+    print(  
         f"  {outcome.task}: N={outcome.matrix.n_patients} "
         f"({outcome.matrix.n_positive} vs {outcome.matrix.n_negative}) "
         f"features={len(outcome.matrix.feature_names)} AUROC={auroc} DeLongCI={ci} ECE={ece} "

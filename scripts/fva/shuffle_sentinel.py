@@ -1,16 +1,3 @@
-"""Generalised shuffle-sentinel + pooled-OOF machinery (ported verbatim from h6/h4).
-
-The shuffle sentinel is the LOCK-2 integrity artifact: permute the subtype labels ONCE up front so
-the permutation wraps the WHOLE LogReg + StratifiedGroupKFold pipeline, pool the shuffle AUROC, and
-compare to the real single-stream AUROC. A shuffled label must decode at chance (~0.5) — anything
-above chance flags peeking.
-
-Ported (C2-3) verbatim from ``h6_modality_audit`` (``_coalition_oof``, ``_empty_coalition_oof``,
-``_shuffle_note``, ``stream_shuffle_sentinels``). The modality-stream list and seed list are
-parameterised via the caller (FVAConfig) instead of the module-level ``SEEDS``/``N_SPLITS`` globals,
-per the C2-3 checklist. No algorithmic change — the LogReg estimator, the per-fold train-only
-impute+scale, the patient-disjoint assertion, and the shuffle RNG are byte-identical to h6.
-"""
 
 from __future__ import annotations
 
@@ -31,14 +18,6 @@ def coalition_oof(
     n_splits: int = 5,
     shuffle: bool = False,
 ) -> np.ndarray:
-    """Pooled OOF positive-class prob for a coalition (list of aligned stream matrices).
-
-    Verbatim from h6_modality_audit._coalition_oof (the only change: ``n_splits`` is a parameter
-    instead of the module global). Each stream's imputer(if needed)+scaler is fit TRAIN-fold-only;
-    matrices are concatenated AFTER per-fold transforms so no leakage crosses streams. LogReg(C=1.0,
-    max_iter=1000) — the pre-reg's locked coalition estimator. shuffle=True permutes labels ONCE up
-    front so it wraps the estimator.
-    """
     y = np.asarray(y)
     if shuffle:
         y = np.random.default_rng(seed).permutation(y)
@@ -64,10 +43,6 @@ def coalition_oof(
 
 
 def empty_coalition_oof(y: np.ndarray, groups: np.ndarray, seed: int, n_splits: int = 5) -> np.ndarray:
-    """∅ baseline: predict TRAIN-fold prevalence for every TEST patient (AUROC ~0.5 by construction).
-
-    Verbatim from h6_modality_audit._empty_coalition_oof (n_splits parameterised).
-    """
     y = np.asarray(y)
     cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     oof = np.full(len(y), np.nan)
@@ -77,13 +52,6 @@ def empty_coalition_oof(y: np.ndarray, groups: np.ndarray, seed: int, n_splits: 
 
 
 def shuffle_note(real: float, shuf: float) -> str:
-    """Explain the real-data shuffle sentinel honestly (ported verbatim from h6/h4 ``_shuffle_note``).
-
-    The pre-reg's integrity requirement is 'shuffle AT CHANCE' — a shuffled label must decode ~0.5.
-    The stricter 'shuffle < real-0.03' form is a PEEKING detector; it can only 'fail' when the REAL
-    score is itself at/below chance (the null signature), in which case there is no inflation to
-    detect — that is confirmation of the null, NOT a peeking artifact.
-    """
     at_chance = 0.45 <= shuf <= 0.55
     if not at_chance:
         return f"WARN: shuffle {shuf:.3f} not at chance — possible peeking; treat this arm's number with care."
@@ -102,15 +70,6 @@ def stream_shuffle_sentinels(
     n_splits: int = 5,
     stream_names: tuple[str, ...] = ("clinical", "radiomics", "mri"),
 ) -> dict:
-    """Per-stream real-data label-shuffle sentinel for the single-stream arms.
-
-    Verbatim from h6_modality_audit.stream_shuffle_sentinels (seeds/n_splits/stream_names
-    parameterised via the caller instead of the module globals, per C2-3). Permute the subtype
-    labels ONCE (inside coalition_oof via shuffle=True, wrapping the whole LogReg+StratifiedGroupKFold
-    pipeline), pool the per-seed shuffle AUROC, and compare to the SAME-quantity real single-stream
-    AUROC (reused from the already-computed coalition detail so real and shuffle are the identical
-    pooled-OOF quantity).
-    """
     out = {}
     for name in stream_names:
         X, impute = streams[name]["X"], streams[name]["impute"]

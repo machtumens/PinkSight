@@ -1,47 +1,3 @@
-"""Arm 8 (Wave 1, PILOT-POWER) — proteogenomic-discordance organ. FLOOR GATE (CPTAC-BRCA, N≈122).
-
-Purpose (one line): characterise post-transcriptional regulation BURDEN at diagnosis — the per-patient
-magnitude of mRNA↔protein discordance (post-transcriptional buffering) — and ask, on the CPTAC-BRCA
-pilot cohort, whether that burden tracks the PAM50 subtype axis (the cheapest defensible floor number).
-
-The floor gate is the cheapest de-risk: does the per-patient buffering-burden scalar correlate with the
-continuous PAM50 subtype-centroid axis at all? Both quantities come from the SAME staged matched cohort
-(no external label fetch). If |r| is at chance, no supervised discordance→subtype arm is warranted. The
-gate produces the number (Pearson r + bootstrap 95% CI + ECE-of-the-binarised-axis + multi-seed) and the
-KILL / GREENLIGHT / INDETERMINATE decision vs the config thresholds.
-
-POWER HONESTY IS MANDATORY (plan Arm 8 spec): N≈122 is brutal for a continuous correlation. EVERY result
-carries "PILOT N=122 — underpowered, hypothesis-generating only". NO headline number is claimed from this
-arm. A wide-CI INDETERMINATE / KILL is the EXPECTED, honest pilot outcome — not a failure.
-
-Ledger guard (LOCK-1/LOCK-2, critical): the organ's output is "post-transcriptional regulation burden
-characterisation at diagnosis (pilot, N=122)" EVERYWHERE. NEVER prognosis / kinetics / doubling-time /
-early-detection / cross-institution generalisation. The protein (and RNA) abundance of the IHC-identity
-mirrors ESR1 / PGR / ERBB2 / MKI67 is HELD OUT of the discordance-input gene set (they are subtype
-label surrogates — LOCK-2). Subtype-as-TARGET is allowed; subtype-as-INPUT is not. CPTAC ∩ Duke = 0
-(different cohorts — logged explicitly; no dedup needed).
-
-Data (public, staged on demand via the `cptac` PyPI package → cached under data/genomics/cptac_brca/):
-  - proteomics       (umich)  — per-patient protein quantification, gene-symbol columns
-  - transcriptomics  (washu)  — matched per-patient RNA (log2), gene-symbol columns
-  - clinical         (mssm)   — demographics / outcome (NOT used as a feature; no usable grade/subtype)
-Provenance: CPTAC-BRCA (PDC000173 / Krug-Mertins 2020 prospective breast proteogenome), distributed by
-the `cptac` package (Payne lab, PNNL) from its Zenodo/PDC mirrors. Public.
-
-Target (plan Arm 8): the PAM50 subtype **continuous centroid axis**. No pre-computed PAM50 call exists in
-the staged clinical (mssm histologic_grade is entirely GX / not-assessed), so the axis is computed
-SELF-CONTAINED from the 50 PAM50 genes in the staged RNA — see `pam50_axis()` for the exact construction
-and the Deviations note. Subtype is a legitimate TARGET under LOCK-2.
-
-Eval integrity (LOCK-2, decisions.md / plan Shared Evaluation Spine):
-  - Patient-level (one row per patient) — the discordance scalar and the target are both per-patient.
-  - Leakage guard: ESR1/PGR/ERBB2/MKI67 mirrors EXCLUDED from the discordance-input gene set; the shared
-    `assert_no_forbidden_inputs` hard gate is run on the discordance gene panel before any scoring.
-  - Never a bare number: Pearson r + bootstrap 95% CI at >= 3 seeds (plan reporting bar), + the ECE of
-    the binarised-axis discordance ranking (calibration companion), reused from pinksight.eval.
-
-Plan: process/general-plans/active/novel-heads-roadmap_25-07-26/novel-heads-roadmap_PLAN_25-07-26.md
-"""
 
 from __future__ import annotations
 
@@ -56,20 +12,19 @@ import numpy as np
 import pandas as pd
 import yaml
 
-# Repo root on sys.path so `pinksight` + the sibling harness import when run as a bare script.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from pinksight.eval.calibration import ece as _ece  # noqa: E402
-from tests.test_novel_heads_leakage import (  # noqa: E402
+from pinksight.eval.calibration import ece as _ece  
+from tests.test_novel_heads_leakage import (  
     _canonical,
     _FORBIDDEN_TOKENS,
     assert_no_forbidden_inputs,
 )
-from scripts.novel_heads.wave1_eval_harness import (  # noqa: E402
+from scripts.novel_heads.wave1_eval_harness import (  
     run_floor_gate as run_classification_gate,
     oof_calibrate,
     shap_top20 as harness_shap_top20,
@@ -84,16 +39,8 @@ _PURPOSE = (
     "floor gate)"
 )
 
-# The IHC-identity mirrors held OUT of the discordance-input gene set (LOCK-2). ESR1/PGR/ERBB2/MKI67
-# are subtype label surrogates; a per-gene discordance computed over them would leak the target axis.
-# The shared leakage guard (assert_no_forbidden_inputs) is the hard gate — this list is the explicit,
-# auditable exclusion applied before it.
 _FORBIDDEN_GENE_SYMBOLS = frozenset({"ESR1", "PGR", "ERBB2", "MKI67"})
 
-# Canonical PAM50 gene set (Parker et al. 2009, J Clin Oncol). Used ONLY to build the continuous
-# subtype-centroid TARGET axis from the staged RNA — never as a discordance INPUT (the four IHC mirrors
-# in this list are still stripped from the discordance panel by _FORBIDDEN_GENE_SYMBOLS). Subtype is a
-# permitted target under LOCK-2.
 _PAM50_GENES: tuple[str, ...] = (
     "UBE2T", "BIRC5", "NUF2", "CDC6", "CCNB1", "TYMS", "MYBL2", "CEP55", "MELK", "NDC80",
     "RRM2", "UBE2C", "CENPF", "PTTG1", "EXO1", "ORC6", "ANLN", "CCNE1", "CDC20", "MKI67",
@@ -102,16 +49,11 @@ _PAM50_GENES: tuple[str, ...] = (
     "MDM2", "NAT1", "FOXA1", "BLVRA", "MMP11", "GPR160", "FGFR4", "GRB7", "TMEM45B", "ERBB2",
 )
 
-# ESR1-anchored orientation: LumA/ER+ high-ESR1 tumours sit at the low-aggressiveness end of the axis;
-# Basal/TNBC low-ESR1 tumours at the high end. We orient the PAM50 axis so higher = more Basal-like
-# (more aggressive) using the sign of the ESR1 loading. This makes the axis a monotone at-diagnosis
-# subtype-aggressiveness proxy (characterisation only — never kinetics).
 _AXIS_ANCHOR_GENE = "ESR1"
 
 
 @dataclass(frozen=True)
 class ArmConfig:
-    """Parsed arm-8 config knobs the floor gate needs (seeds, bootstrap n, KILL/GREENLIGHT thresholds)."""
 
     seeds: tuple[int, ...]
     bootstrap_n: int
@@ -177,7 +119,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_config(cfg_raw: dict) -> ArmConfig:
-    """Map the config yaml to the typed knobs (with the plan Arm 8 defaults if a field is absent)."""
     seeds = tuple(int(s) for s in cfg_raw.get("seeds", (0, 1, 2)))
     return ArmConfig(
         seeds=seeds,
@@ -188,21 +129,11 @@ def _parse_config(cfg_raw: dict) -> ArmConfig:
     )
 
 
-# ==================================================================================================
-# Data staging (public `cptac` package → cached parquet under data/genomics/cptac_brca/).
-# ==================================================================================================
 def _cache_dir(data_root: Path) -> Path:
     return data_root / "data" / "genomics" / "cptac_brca"
 
 
 def _symbol_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Collapse a cptac (symbol, ensembl) MultiIndex column frame to bare unique gene-symbol columns.
-
-    cptac ships transcriptomics/proteomics with a two-level column index `(gene_symbol, ensembl_id)`.
-    We take level 0 (the symbol) so the leakage canonicaliser and the PAM50/forbidden matching see plain
-    symbols. Duplicate symbols (multiple ENSEMBL ids per gene) are collapsed by mean so columns stay
-    unique — an unsupervised aggregation using no label information.
-    """
     cols = df.columns
     if isinstance(cols, pd.MultiIndex):
         df = df.copy()
@@ -216,17 +147,7 @@ def _symbol_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def stage_cptac_brca(data_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Stage matched CPTAC-BRCA RNA + protein via the `cptac` package; cache as parquet; return both.
-
-    Returns (rna, protein) — both indexed by Patient_ID, bare gene-symbol columns, restricted to the
-    patients present in BOTH matrices (matched RNA+protein). Caches to data/genomics/cptac_brca/ so a
-    re-run is offline. Raises a clear ImportError / RuntimeError (→ CLI BLOCKED exit) if the package is
-    absent or the download fails — NEVER fabricates a matrix.
-    """
     cache = _cache_dir(data_root)
-    # CSV cache (not parquet) so no pyarrow/fastparquet dependency is required — matches the repo's
-    # CSV genomics convention (data/genomics/depmap/*.csv). Patient_ID index + bare gene-symbol columns
-    # round-trip cleanly through CSV.
     rna_csv = cache / "transcriptomics_washu.csv"
     prot_csv = cache / "proteomics_umich.csv"
 
@@ -235,7 +156,7 @@ def stage_cptac_brca(data_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         prot = pd.read_csv(prot_csv, index_col=0)
     else:
         try:
-            import cptac  # noqa: PLC0415 — optional data-staging dep, imported lazily
+            import cptac  
         except ImportError as exc:
             raise ImportError(
                 "arm8 floor gate BLOCKED — the `cptac` package is not installed. Install it "
@@ -246,7 +167,7 @@ def stage_cptac_brca(data_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             br = cptac.Brca()
             rna = _symbol_columns(br.get_transcriptomics("washu"))
             prot = _symbol_columns(br.get_proteomics("umich"))
-        except Exception as exc:  # network / mirror failure — honest BLOCKED, never a fake matrix
+        except Exception as exc:  
             raise RuntimeError(
                 "arm8 floor gate BLOCKED — `cptac` could not stage CPTAC-BRCA matched RNA+protein "
                 f"(source: PDC000173 via the cptac package Zenodo mirror). Underlying error: {exc}. "
@@ -270,28 +191,7 @@ def stage_cptac_brca(data_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     return rna.loc[shared], prot.loc[shared]
 
 
-# ==================================================================================================
-# Discordance-burden score (the science: per-patient post-transcriptional buffering magnitude).
-# ==================================================================================================
 def discordance_burden(rna: pd.DataFrame, protein: pd.DataFrame) -> pd.Series:
-    """Per-patient mRNA↔protein discordance magnitude over the shared gene panel (buffering burden).
-
-    Construction (leakage-clean, LOCK-2):
-      1. Restrict to genes measured in BOTH RNA and protein; DROP the forbidden IHC mirrors
-         (ESR1/PGR/ERBB2/MKI67) from the panel — they are subtype surrogates, never a discordance input.
-      2. Run the shared leakage hard gate on the panel gene names before any scoring.
-      3. Z-score each gene ACROSS patients, separately for RNA and protein, so the two modalities are on
-         a comparable scale and per-gene mean expression is removed (the residual buffering signal, not
-         absolute abundance, is what we want). Standardisation uses only the matrix itself (no labels).
-      4. Per patient, discordance burden = mean over the panel of |protein_z − rna_z| — how far this
-         patient's proteome sits from what its transcriptome predicts (post-transcriptional buffering).
-
-    Returns a per-patient Series (index = Patient_ID). Higher = more post-transcriptional discordance.
-    """
-    # Drop ANY gene whose canonicalised name maps to a forbidden token — this reuses the leakage
-    # test's own canonical forbidden set (single source of truth) so it catches every IHC-mirror ALIAS,
-    # not just the four canonical symbols. E.g. `MIB1` (the Ki-67 antibody-clone alias) is a forbidden
-    # Ki-67 mirror the shared guard flags; a hand-maintained {ESR1,PGR,ERBB2,MKI67} list would miss it.
     protein_syms = set(protein.columns)
     common_genes = [g for g in rna.columns if g in protein_syms]
     panel = [g for g in common_genes if _canonical(str(g)) not in _FORBIDDEN_TOKENS]
@@ -301,7 +201,6 @@ def discordance_burden(rna: pd.DataFrame, protein: pd.DataFrame) -> pd.Series:
             "dropping IHC mirrors; too few to characterise a stable per-patient discordance burden."
         )
 
-    # HARD leakage gate (LOCK-2): the discordance panel must carry no forbidden IHC surrogate.
     assert_no_forbidden_inputs(panel)
 
     rna_p = rna[panel].apply(pd.to_numeric, errors="coerce")
@@ -315,33 +214,10 @@ def discordance_burden(rna: pd.DataFrame, protein: pd.DataFrame) -> pd.Series:
     rna_z = _zscore(rna_p)
     prot_z = _zscore(prot_p)
     resid = (prot_z - rna_z).abs()
-    # per-patient mean absolute residual across the panel (genes with a NaN in either modality drop out
-    # of that patient's mean via skipna — no imputation of a fabricated value)
     return resid.mean(axis=1, skipna=True)
 
 
-# ==================================================================================================
-# PAM50 continuous subtype-centroid axis (the TARGET). Self-contained from staged RNA. See Deviations.
-# ==================================================================================================
 def pam50_axis(rna: pd.DataFrame) -> pd.Series:
-    """Continuous PAM50 subtype-centroid axis per patient, computed self-contained from the staged RNA.
-
-    Plan Arm 8 names the target as "PAM50 subtype continuous centroid distance". No pre-computed PAM50
-    call ships in the staged CPTAC clinical (mssm histologic_grade is entirely GX), so the axis is built
-    from the 50 PAM50 genes present in the staged transcriptomics (all 50 confirmed present):
-
-      1. Restrict RNA to the PAM50 genes; median-center each gene across patients (the standard PAM50
-         pre-step) and z-score (unit variance) so no single high-variance gene dominates.
-      2. Take the first principal component (via SVD) of the (patient × PAM50-gene) matrix — the dominant
-         axis of PAM50-gene covariation is the LumA↔Basal subtype-aggressiveness axis in breast cohorts.
-      3. ORIENT it by the ESR1 loading so higher score = more Basal-like (lower ESR1) = the
-         higher-aggressiveness end. This yields a continuous, monotone at-diagnosis subtype axis — a
-         defensible "centroid distance" proxy that needs no external centroid table (which, mis-specified,
-         would fabricate the target). This is an implementation-detail choice (see the Deviations note in
-         the report); it is a TARGET (subtype), permitted under LOCK-2.
-
-    Returns a per-patient Series (index = Patient_ID), higher = more Basal-like / more aggressive.
-    """
     present = [g for g in _PAM50_GENES if g in set(rna.columns)]
     if len(present) < 40:
         raise RuntimeError(
@@ -349,20 +225,16 @@ def pam50_axis(rna: pd.DataFrame) -> pd.Series:
             "few to build a stable continuous subtype-centroid axis target."
         )
     mat = rna[present].apply(pd.to_numeric, errors="coerce")
-    # median-center per gene (PAM50 convention), then z-score; impute residual NaN with 0 (post-center
-    # gene mean) so the SVD is defined — a handful of missing entries, no label used.
     centered = mat - mat.median(axis=0, skipna=True)
     sd = centered.std(axis=0, skipna=True).replace(0.0, np.nan)
     z = (centered / sd).fillna(0.0)
 
     x = z.to_numpy(dtype=float)
-    x = x - x.mean(axis=0, keepdims=True)  # column-center for PCA
-    # first right-singular vector = PC1 loadings; project patients onto it
+    x = x - x.mean(axis=0, keepdims=True)  
     _u, _s, vt = np.linalg.svd(x, full_matrices=False)
     pc1_loadings = vt[0]
     scores = x @ pc1_loadings
 
-    # orient so higher = more Basal-like (lower ESR1): flip if ESR1 loads positively on PC1
     if _AXIS_ANCHOR_GENE in present:
         esr1_idx = present.index(_AXIS_ANCHOR_GENE)
         if pc1_loadings[esr1_idx] > 0:
@@ -370,42 +242,7 @@ def pam50_axis(rna: pd.DataFrame) -> pd.Series:
     return pd.Series(scores, index=rna.index, name="pam50_axis")
 
 
-# ==================================================================================================
-# CONSTRUCT-VALIDITY CONTROL (red-team, 2026-07-25): RNA-INDEPENDENT subtype axis.
-#
-# The red-team ruled arm 8 SURVIVES-WITH-CONTROL: the shuffle sentinel (real r >> permutation null)
-# legitimately rules out the pairing artifact, but the ORIGINAL subtype axis is RNA-derived (PC1 of
-# the PAM50 *RNA* genes) while the discordance burden ALSO contains RNA — so a shared-RNA dependence
-# is not fully excluded. This control re-anchors the axis on a label that does NOT come from the RNA
-# matrix and re-runs the identical correlation.
-#
-# Anchor selection (empirical, at execute time — NOT a design assumption):
-#   PREFERRED — a clinical IHC-based subtype/ER label. CHECKED: the staged CPTAC clinical
-#     (mssm `clinical_Pan-cancer.May2022.tsv.gz`) carries an IHC field
-#     `baseline/ancillary_studies_immunohistochemistry_type_and_result` that is 0/134 non-null for
-#     BRCA, and no ER/PR/HER2/subtype column exists (histologic_grade is entirely GX). So NO
-#     RNA-independent IHC/clinical subtype label ships with this cohort — the preferred anchor is
-#     genuinely unavailable (see `ihc_anchor_available()`).
-#   FALLBACK (used) — the PROTEIN matrix. The axis is rebuilt as the ESR1-oriented PC1 of the PAM50
-#     PROTEIN abundances (`protein_pam50_axis`). This uses ZERO RNA, so it removes exactly the
-#     "RNA in both the axis and the burden" dependence the red-team flagged.
-#   CAVEAT (flagged everywhere): the burden term still contains protein, so a protein-anchored axis
-#     does not remove a *protein*-in-both dependence — it removes only the RNA-in-both one. It is a
-#     strictly stronger construct check than the RNA axis, not a perfectly independent one.
-# ==================================================================================================
 def ihc_anchor_available(data_root: Path) -> tuple[bool, str, int, int]:
-    """Check whether an RNA-independent IHC/clinical subtype label ships with the staged CPTAC-BRCA.
-
-    Reads the bundled/staged CPTAC clinical table (mssm pan-cancer) if present and inspects the IHC
-    results field + any ER/PR/HER2/subtype column for BRCA rows. Returns
-    `(available, reason, n_brca, n_ihc_nonnull)`. `available` is True only if a usable per-patient
-    RNA-independent subtype/receptor label is found; otherwise the caller falls back to the protein
-    anchor. NEVER fabricates a label — a missing/empty field returns False with the reason logged.
-
-    This is a read-only probe: it does not stage anything and returns False (not an error) if the
-    clinical table cannot be located, so the control degrades to the protein anchor gracefully.
-    """
-    # The cptac package bundles the clinical table locally; also allow a project-staged copy.
     candidates = [
         data_root
         / ".venv/lib/python3.11/site-packages/cptac/data/mssm-all_cancers"
@@ -421,7 +258,7 @@ def ihc_anchor_available(data_root: Path) -> tuple[bool, str, int, int]:
             clin = pd.read_csv(clin_path, sep="\t", compression="gzip", low_memory=False)
         else:
             clin = pd.read_csv(clin_path, low_memory=False)
-    except Exception as exc:  # noqa: BLE001 — a read failure just means fall back, not crash
+    except Exception as exc:  
         return (False, f"clinical table unreadable ({exc}); protein anchor used", 0, 0)
 
     if "tumor_code" in clin.columns:
@@ -433,13 +270,12 @@ def ihc_anchor_available(data_root: Path) -> tuple[bool, str, int, int]:
     ihc_col = "baseline/ancillary_studies_immunohistochemistry_type_and_result"
     n_ihc = int(brca[ihc_col].notna().sum()) if ihc_col in brca.columns else 0
 
-    # An ER/PR/HER2/subtype column would have to carry receptor-status content on BRCA rows.
     recpat = "estrogen|progest|her2|triple|luminal|basal|receptor|subtype|pam50"
     subtype_cols = [
         c
         for c in brca.columns
         if brca[c].dropna().astype(str).str.contains(recpat, case=False, regex=True).any()
-        and c != "baseline/histologic_type"  # histology (IDC/ILC) is NOT a subtype/receptor axis
+        and c != "baseline/histologic_type"  
     ]
     if n_ihc > 0 or subtype_cols:
         return (True, f"IHC/subtype label present (ihc_nonnull={n_ihc}, cols={subtype_cols})", n_brca, n_ihc)
@@ -455,18 +291,6 @@ def ihc_anchor_available(data_root: Path) -> tuple[bool, str, int, int]:
 
 
 def protein_pam50_axis(protein: pd.DataFrame) -> pd.Series:
-    """RNA-INDEPENDENT subtype axis: ESR1-oriented PC1 of the PAM50 *protein* abundances.
-
-    Identical construction to `pam50_axis` but computed on the PROTEIN matrix, so the axis carries no
-    RNA at all — this is the construct-validity control the red-team required. The PAM50 protein
-    subset (ESR1/ERBB2/MKI67/PGR included) is used only to BUILD the TARGET axis (permitted under
-    LOCK-2, subtype-as-target); those genes are still stripped from the discordance INPUT panel by
-    `discordance_burden`. Steps: restrict to PAM50 genes present in protein → median-center + z-score
-    → PC1 → orient by ESR1 protein loading so higher = more Basal-like / more aggressive.
-
-    Returns a per-patient Series (index = Patient_ID). Raises → CLI BLOCKED if too few PAM50 proteins
-    are present to build a stable axis (never fabricates one).
-    """
     present = [g for g in _PAM50_GENES if g in set(protein.columns)]
     if len(present) < 40:
         raise RuntimeError(
@@ -491,23 +315,8 @@ def protein_pam50_axis(protein: pd.DataFrame) -> pd.Series:
     return pd.Series(scores, index=protein.index, name="protein_pam50_axis")
 
 
-# ==================================================================================================
-# Floor gate: Pearson r (discordance vs PAM50 axis) + bootstrap CI + ECE, multi-seed.
-# ==================================================================================================
 @dataclass
 class FloorResult:
-    """Reportable aggregate for the arm-8 floor gate — never a bare number (docs/CLAIM_LEDGER.md rule).
-
-    `pearson_r` is the point Pearson correlation between the per-patient discordance burden and the
-    continuous PAM50 axis on the full matched cohort. `boot_ci95` is the seed-MEAN of per-seed bootstrap
-    95% percentile CIs (project seed-mean convention, matching arm 6 / the G5 headline). `ece` is the
-    calibration error of the discordance ranking against the axis binarised at its median (a companion
-    calibration number — the plan reporting bar asks for ECE). `shuffle_r` is the seed-mean permutation-
-    NULL Pearson r (target labels shuffled) — the leakage sentinel: it must collapse to ~0, proving the
-    real r is not a construction artifact of RNA appearing in both the discordance score and the axis.
-    `n` is the matched cohort size (the pilot N). Decision (KILL/GREENLIGHT/INDETERMINATE) is attached
-    by `_decide`, not here.
-    """
 
     pearson_r: float
     boot_ci95: tuple[float, float]
@@ -521,7 +330,6 @@ class FloorResult:
 
 
 def _pearson(a: np.ndarray, b: np.ndarray) -> float:
-    """Pearson r on the rows where BOTH a and b are finite (NaN-safe). Returns NaN on degenerate input."""
     m = np.isfinite(a) & np.isfinite(b)
     if m.sum() < 3:
         return float("nan")
@@ -532,15 +340,6 @@ def _pearson(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def run_floor_gate(discordance: pd.Series, axis: pd.Series, cfg: ArmConfig) -> FloorResult:
-    """Correlate discordance burden vs PAM50 axis; bootstrap-CI it per seed; aggregate + ECE.
-
-    The point estimate is the full-cohort Pearson r. For EACH seed we draw `bootstrap_n` patient
-    resamples (with replacement) and take the 2.5/97.5 percentile of the resample Pearson r as that
-    seed's 95% CI; the headline CI is the seed-mean of those bounds (project convention). ECE = the
-    calibration error of the min-max-normalised discordance score as a "probability" of the axis being
-    above its median — a companion calibration number, not the headline. Multi-seed (>=3) satisfies the
-    plan reporting bar. N≈122 → wide CI expected (pilot power).
-    """
     idx = sorted(set(discordance.index) & set(axis.index))
     d = discordance.loc[idx].to_numpy(dtype=float)
     a = axis.loc[idx].to_numpy(dtype=float)
@@ -565,10 +364,6 @@ def run_floor_gate(discordance: pd.Series, axis: pd.Series, cfg: ArmConfig) -> F
             lo = float(np.percentile(finite, 2.5))
             hi = float(np.percentile(finite, 97.5))
 
-        # Shuffle sentinel (leakage-clean check): permute the target axis vs the discordance score and
-        # re-correlate. Under the null the mean |r| over the permutations must collapse to ~0 — a non-
-        # trivial shuffle r would flag the real r as a construction artifact (RNA in both terms), the
-        # same sentinel discipline the project used at G1 / the pCR pilot.
         perm_rs = np.empty(cfg.bootstrap_n, dtype=float)
         for b in range(cfg.bootstrap_n):
             perm_rs[b] = _pearson(d, a[rng.permutation(n)])
@@ -590,7 +385,6 @@ def run_floor_gate(discordance: pd.Series, axis: pd.Series, cfg: ArmConfig) -> F
     boot_ci95 = (float(np.nanmean(ci_los)), float(np.nanmean(ci_his)))
     shuffle_r = float(np.nanmean(shuffle_rs))
 
-    # ECE companion: treat min-max-normalised discordance as P(axis above median); reuse pinksight ECE.
     y_bin = (a > np.nanmedian(a)).astype(int)
     d_finite = d[np.isfinite(d)]
     if d_finite.size and (d_finite.max() > d_finite.min()):
@@ -607,7 +401,7 @@ def run_floor_gate(discordance: pd.Series, axis: pd.Series, cfg: ArmConfig) -> F
         shuffle_r=shuffle_r,
         seeds=len(cfg.seeds),
         n=n,
-        n_panel_genes=0,  # filled by caller (it knows the panel size)
+        n_panel_genes=0,  
         n_pam50_genes=0,
         per_seed=per_seed,
     )
@@ -615,21 +409,13 @@ def run_floor_gate(discordance: pd.Series, axis: pd.Series, cfg: ArmConfig) -> F
 
 @dataclass
 class ArmOutcome:
-    """The floor result + the KILL/GREENLIGHT/INDETERMINATE decision and its rationale."""
 
     result: FloorResult
-    decision: str  # "KILL" | "GREENLIGHT" | "INDETERMINATE"
+    decision: str  
     rationale: str
 
 
 def _decide(result: FloorResult, cfg: ArmConfig) -> ArmOutcome:
-    """Apply the pre-registered pilot gate: KILL |r|<=0.10 & CI overlaps 0; GREENLIGHT |r|>=0.25 & CI LB>0.05.
-
-    Everything else is INDETERMINATE (real-but-weak / inconclusive at pilot N) — the EXPECTED honest
-    outcome for N≈122. The bootstrap CI lower bound (in |r| space, using the CI bound nearest to the
-    sign of r) must clear `greenlight_bootstrap_ci_lb` for a GREENLIGHT so a wide-CI point estimate that
-    merely grazes 0.25 does not pass. Power caveat is attached to every rationale.
-    """
     r = result.pearson_r
     lo, hi = result.boot_ci95
     kill = cfg.kill_threshold_r_abs
@@ -646,8 +432,6 @@ def _decide(result: FloorResult, cfg: ArmConfig) -> ArmOutcome:
         )
 
     ci_overlaps_zero = (not np.isfinite(lo)) or (lo <= 0.0 <= hi)
-    # |r|-space lower bound: the CI bound closest to zero on the side of r (for r>0 this is lo; for r<0
-    # this is -hi). Used only for the GREENLIGHT LB check.
     abs_lb = lo if r >= 0 else -hi
 
     if abs(r) <= kill and ci_overlaps_zero:
@@ -677,33 +461,19 @@ def _decide(result: FloorResult, cfg: ArmConfig) -> ArmOutcome:
 
 
 def run_arm8(cfg: ArmConfig, data_root: Path) -> ArmOutcome:
-    """End-to-end floor gate: stage → discordance burden → PAM50 axis → correlate/bootstrap → decide."""
     rna, protein = stage_cptac_brca(data_root)
     discordance = discordance_burden(rna, protein)
     axis = pam50_axis(rna)
 
     result = run_floor_gate(discordance, axis, cfg)
-    # backfill panel sizes (recompute cheaply for the record)
     common_genes = [g for g in rna.columns if g in set(protein.columns)]
     result.n_panel_genes = len([g for g in common_genes if g not in _FORBIDDEN_GENE_SYMBOLS])
     result.n_pam50_genes = len([g for g in _PAM50_GENES if g in set(rna.columns)])
     return _decide(result, cfg)
 
 
-# ==================================================================================================
-# Construct-validity control runner: burden vs the RNA-INDEPENDENT (protein-anchored) subtype axis.
-# ==================================================================================================
 @dataclass
 class ControlOutcome:
-    """Result of the RNA-independent-axis construct control + its SURVIVES / AXIS-CIRCULAR verdict.
-
-    `original` is the burden-vs-RNA-axis outcome (the headline being interrogated). `control` is the
-    burden-vs-PROTEIN-axis outcome (the RNA-independent re-anchor). `axis_agreement_r` is the Pearson
-    r between the RNA axis and the protein axis (how much the two subtype axes agree). `esr1_alone_r`
-    is r(burden, raw ESR1 protein) — a trivial-echo check (a large |value| would mean the burden is
-    just an ESR1 readout, not a genuine multi-gene discordance signal). `anchor` is "ihc" or
-    "protein"; `anchor_note` records the independence caveat. `verdict` ∈ {SURVIVES, AXIS-CIRCULAR}.
-    """
 
     original: ArmOutcome
     control: ArmOutcome
@@ -718,17 +488,6 @@ class ControlOutcome:
 def _verdict_control(
     original: ArmOutcome, control: ArmOutcome, cfg: ArmConfig
 ) -> tuple[str, str]:
-    """SURVIVES if the control r holds clear of the shuffle null with CI excluding 0; else AXIS-CIRCULAR.
-
-    Honest, symmetric rule (no tuning-to-rescue):
-      - SURVIVES  — the RNA-independent-axis |r| is at/above the KILL band AND its bootstrap CI lower
-        bound (nearest 0) stays > 0 AND |r| stands clear of the permutation-null shuffle |r| (>= 3x,
-        matching the "~6x null" leakage-clean bar the report used). The signal is NOT an artifact of
-        the RNA-derived axis construction.
-      - AXIS-CIRCULAR — the control |r| collapses toward the shuffle null (CI crosses 0, or |r| is not
-        clear of the shuffle). The original correlation depended on the RNA-derived axis → axis-circular
-        → downgrade. Reported whichever happens; N=121 pilot caveat carried either way.
-    """
     r_ctrl = control.result.pearson_r
     lo, hi = control.result.boot_ci95
     shuffle = control.result.shuffle_r
@@ -780,20 +539,9 @@ def _verdict_control(
 
 
 def run_construct_control(cfg: ArmConfig, data_root: Path) -> ControlOutcome:
-    """Re-anchor the subtype axis on an RNA-INDEPENDENT label and re-run the burden correlation.
-
-    Stages the same matched CPTAC-BRCA cohort, computes the original (RNA-axis) outcome for reference,
-    then rebuilds the subtype axis RNA-independently: prefer a clinical IHC/subtype label (checked via
-    `ihc_anchor_available`), else fall back to the PROTEIN-anchored PAM50 axis. Correlates the SAME
-    per-patient discordance burden against the new axis (Pearson r + bootstrap CI + shuffle + ECE,
-    3 seeds) and emits the SURVIVES / AXIS-CIRCULAR verdict plus axis-agreement + ESR1-alone
-    diagnostics. Raises → CLI BLOCKED (exit 2) if neither an IHC nor a usable protein anchor exists.
-    """
     rna, protein = stage_cptac_brca(data_root)
     discordance = discordance_burden(rna, protein)
 
-    # Original (RNA-axis) outcome — the headline being interrogated. Recomputed here for a like-for-like
-    # comparison record (identical machinery, same cohort).
     rna_axis = pam50_axis(rna)
     orig_result = run_floor_gate(discordance, rna_axis, cfg)
     common_genes = [g for g in rna.columns if g in set(protein.columns)]
@@ -801,12 +549,8 @@ def run_construct_control(cfg: ArmConfig, data_root: Path) -> ControlOutcome:
     orig_result.n_pam50_genes = len([g for g in _PAM50_GENES if g in set(rna.columns)])
     original = _decide(orig_result, cfg)
 
-    # RNA-independent anchor selection.
     ihc_ok, ihc_reason, _n_brca, _n_ihc = ihc_anchor_available(data_root)
     if ihc_ok:
-        # Preferred path is intentionally NOT auto-built here: no such label ships with this cohort
-        # (verified empirically), so a builder would be dead code that could silently fabricate an
-        # axis. If a future staged cohort DOES ship an IHC/subtype label, wire its construction here.
         raise RuntimeError(
             "arm8 construct-control: an IHC/subtype label was detected "
             f"({ihc_reason}) but no IHC-axis builder is wired for this cohort. Add the IHC-axis "
@@ -826,7 +570,6 @@ def run_construct_control(cfg: ArmConfig, data_root: Path) -> ControlOutcome:
     ctrl_result.n_pam50_genes = len([g for g in _PAM50_GENES if g in set(protein.columns)])
     control = _decide(ctrl_result, cfg)
 
-    # Diagnostics: how much do the two subtype axes agree, and is the burden a trivial ESR1 echo?
     idx = sorted(set(discordance.index) & set(rna_axis.index) & set(prot_axis.index))
     axis_agreement_r = _pearson(
         rna_axis.loc[idx].to_numpy(dtype=float), prot_axis.loc[idx].to_numpy(dtype=float)
@@ -851,9 +594,6 @@ def run_construct_control(cfg: ArmConfig, data_root: Path) -> ControlOutcome:
     )
 
 
-# ==================================================================================================
-# Reporting (markdown + JSON) — ledger-clean, provenance, CPTAC∩Duke=0 log, PILOT-POWER caveat.
-# ==================================================================================================
 def _render_report(outcome: ArmOutcome, cfg: ArmConfig) -> str:
     r = outcome.result
     today = date.today().strftime("%Y-%m-%d")
@@ -1104,12 +844,6 @@ def _fmt_ci(ci: tuple[float, float]) -> str:
 
 
 def _render_control_section(ctrl: ControlOutcome, cfg: ArmConfig) -> str:
-    """Markdown for the '## Construct-Validity Control (RNA-independent axis)' report APPENDIX.
-
-    Written to be APPENDED to the existing arm-8 report (never overwriting the original floor-gate
-    section). States the verdict (SURVIVES / AXIS-CIRCULAR), the anchor used (IHC vs protein) with its
-    independence caveat, the original-vs-control comparison table, and the N=121 pilot caveat.
-    """
     o, c = ctrl.original.result, ctrl.control.result
     today = date.today().strftime("%Y-%m-%d")
     lines: list[str] = []
@@ -1271,13 +1005,6 @@ def _control_payload(ctrl: ControlOutcome, cfg: ArmConfig) -> dict:
 
 
 def _append_control_to_report(report_dir: Path, section_md: str) -> Path:
-    """APPEND the control section to the existing arm-8 report; never overwrite the original.
-
-    Targets `arm8_REPORT_25-07-26.md` if present (the human report), else falls back to the latest
-    `floor_gate_*.md`. Idempotent: if a '## Construct-Validity Control (RNA-independent axis)' heading
-    already exists, everything from that heading onward is replaced (so a re-run refreshes the control
-    in place rather than stacking duplicate sections).
-    """
     target = report_dir / "arm8_REPORT_25-07-26.md"
     if not target.exists():
         candidates = sorted(report_dir.glob("floor_gate_*.md"))
@@ -1292,7 +1019,6 @@ def _append_control_to_report(report_dir: Path, section_md: str) -> Path:
     marker = "## Construct-Validity Control (RNA-independent axis)"
     if marker in existing:
         head = existing.split(marker, 1)[0].rstrip()
-        # drop a trailing '---' separator we previously emitted just above the marker, if present
         if head.endswith("---"):
             head = head[: -len("---")].rstrip()
         existing = head + "\n"
@@ -1300,27 +1026,8 @@ def _append_control_to_report(report_dir: Path, section_md: str) -> Path:
     return target
 
 
-# ==================================================================================================
-# Supervised discordance→subtype arm (--supervised-arm, Brief B advance).
-#
-# PILOT N=121 — underpowered, hypothesis-generating only. NO headline number from this arm.
-# The per-gene discordance feature matrix (|protein_z - rna_z| per gene per patient) is the input;
-# binary subtype (basal-like vs non-basal, defined as pam50_axis > median) is the target.
-# ==================================================================================================
-
-
 @dataclass
 class SupervisedArmResult:
-    """Reportable aggregate for the arm-8 supervised discordance→subtype arm.
-
-    PILOT N=121 — underpowered, hypothesis-generating only. No headline number.
-    `auroc` and `delong_ci95` are the multi-seed means (same convention as the shared harness).
-    `ci_crosses_050` is the honest null check: True when the 95% CI lower bound is <= 0.50 — reported
-    as a null, never hunted for a configuration that clears it (LOCK-2 honest-reporting rule).
-    `floor_gate_result` is the raw FloorGateResult for downstream calibration + SHAP (retains OOF).
-    `feature_names` and `X_full` are retained for SHAP so the advance step can call harness_shap_top20.
-    `last_model` is the model object from the final seed (used for SHAP; documented in report).
-    """
 
     auroc: float
     delong_ci95: tuple[float, float]
@@ -1333,26 +1040,13 @@ class SupervisedArmResult:
     floor_gate_result: FloorGateResult
     feature_names: list[str]
     X_full: np.ndarray
-    last_model: object  # LGBMClassifier — stored for SHAP
+    last_model: object  
 
 
 def discordance_feature_matrix(
     rna: pd.DataFrame,
     protein: pd.DataFrame,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Build the per-gene discordance feature matrix: |protein_z - rna_z| per gene per patient.
-
-    This is the input to the supervised discordance→subtype arm (Brief B advance step).
-    Construction (leakage-clean, LOCK-2):
-      1. Restrict to genes measured in both RNA and protein.
-      2. Exclude the forbidden IHC mirrors (ESR1/PGR/ERBB2/MKI67) and any gene whose canonical
-         name maps to a _FORBIDDEN_TOKENS entry (catches MKI67 aliases such as MIB1).
-      3. Z-score each gene across patients separately for RNA and protein (same as discordance_burden).
-      4. Per-patient per-gene discordance feature = |protein_z - rna_z|.
-    Returns (feature_df, feature_names) where feature_df has Patient_ID index and gene-symbol columns.
-    Runs assert_no_forbidden_inputs + assert_no_survival_columns on the column set before returning —
-    these are hard gates that raise LedgerViolation on any forbidden column.
-    """
     protein_syms = set(protein.columns)
     common_genes = [g for g in rna.columns if g in protein_syms]
     panel = [g for g in common_genes if _canonical(str(g)) not in _FORBIDDEN_TOKENS]
@@ -1362,8 +1056,6 @@ def discordance_feature_matrix(
             "after excluding IHC mirrors; too few to build a stable feature matrix."
         )
 
-    # Hard leakage gates (LOCK-2): must run BEFORE any scoring.
-    # A new feature matrix is exactly where a forbidden column can sneak in (handoff brief warning).
     assert_no_forbidden_inputs(panel)
     assert_no_survival_columns(pd.DataFrame(columns=panel))
 
@@ -1378,41 +1070,25 @@ def discordance_feature_matrix(
     rna_z = _zscore(rna_p)
     prot_z = _zscore(prot_p)
     feat_df = (prot_z - rna_z).abs()
-    # Fill NaN (gene absent in one modality for that patient) with 0 — post-z-score zero contribution.
     feat_df = feat_df.fillna(0.0)
     return feat_df, list(panel)
 
 
 def run_supervised_arm(cfg: ArmConfig, data_root: Path) -> SupervisedArmResult:
-    """Supervised discordance→subtype arm: per-gene |protein_z - rna_z| → binary subtype AUROC.
-
-    PILOT N=121 — underpowered, hypothesis-generating only. This is the Brief B advance step
-    for arm 8 after the GREENLIGHT floor gate. Uses LightGBM (chosen over elastic-net: at N=121
-    with ~11K genes, LightGBM handles high-dimensional sparse signal better than SAGA elastic-net,
-    which is slow on this dimensionality with few samples and converges poorly without a pre-screened
-    gene set; elastic-net is better-suited for the arm 4 advance where the gene set is pre-screened
-    and the signal is known to be diffuse).
-    Binary target: pam50_axis > median → 1 (basal-like), else 0. This is the same continuous PAM50
-    axis used in the floor gate, thresholded at the median for binary classification. Subtype is a
-    permitted TARGET under LOCK-2.
-    """
     rna, protein = stage_cptac_brca(data_root)
     feat_df, feature_names = discordance_feature_matrix(rna, protein)
 
-    # Binary target: pam50_axis > median = basal-like (the more aggressive / TNBC-adjacent end).
     axis = pam50_axis(rna)
     shared_idx = sorted(set(feat_df.index) & set(axis.index))
     feat_df = feat_df.loc[shared_idx]
     axis = axis.loc[shared_idx]
     y = (axis > axis.median()).astype(int).to_numpy()
     X = feat_df.to_numpy(dtype=float)
-    groups = np.array(shared_idx)  # one row per patient → Patient_ID as group
+    groups = np.array(shared_idx)  
 
     n = len(shared_idx)
     seeds = cfg.seeds
 
-    # Run the shared classification floor gate (imported as run_classification_gate to avoid
-    # shadowing the local run_floor_gate which is the Pearson-r gate for the discordance correlation).
     floor_result = run_classification_gate(
         X, y, groups, model="lightgbm", seeds=seeds, n_folds=5
     )
@@ -1420,16 +1096,13 @@ def run_supervised_arm(cfg: ArmConfig, data_root: Path) -> SupervisedArmResult:
     ci_lo, ci_hi = floor_result.delong_ci95
     ci_crosses_050 = ci_lo <= 0.50
 
-    # Retain the last-seed model for SHAP (document in report: SHAP is computed on the model
-    # from the last CV fold of the last seed — an approximation; a full ensemble SHAP would
-    # require re-fitting all folds, which is disproportionate at PILOT N=121).
     try:
         from lightgbm import LGBMClassifier
     except ImportError as exc:
         raise ImportError("LightGBM required for supervised arm.") from exc
 
     last_model = LGBMClassifier(random_state=int(seeds[-1]), n_estimators=200, verbosity=-1)
-    last_model.fit(X, y)  # fit on full data for SHAP (not for generalization — clearly documented)
+    last_model.fit(X, y)  
 
     return SupervisedArmResult(
         auroc=floor_result.auroc,
@@ -1448,7 +1121,6 @@ def run_supervised_arm(cfg: ArmConfig, data_root: Path) -> SupervisedArmResult:
 
 
 def _render_supervised_arm_report(result: SupervisedArmResult, today_str: str) -> str:
-    """Markdown report for the supervised discordance→subtype arm. PILOT N=121 everywhere."""
     r = result
     ci_lo, ci_hi = r.delong_ci95
     null_note = (
@@ -1593,7 +1265,6 @@ def _render_supervised_arm_report(result: SupervisedArmResult, today_str: str) -
 
 
 def _supervised_arm_payload(result: SupervisedArmResult, today_str: str) -> dict:
-    """JSON-serialisable metrics for the supervised arm. PILOT N=121 caveat in every field."""
     ci_lo, ci_hi = result.delong_ci95
     return {
         "arm": 8,
@@ -1635,10 +1306,6 @@ def _supervised_arm_payload(result: SupervisedArmResult, today_str: str) -> dict
     }
 
 
-# ==================================================================================================
-# Advance step (--advance, Brief B): OOF calibration + SHAP + replication note + updated report.
-# ==================================================================================================
-
 _LARGER_N_REPLICATION_NOTE = (
     "**Larger-N replication (checked 2026-07-28):** No suitable public proteogenomic breast cancer "
     "dataset exists to replicate arm 8 at larger N as of this session. Checked:\n"
@@ -1658,25 +1325,20 @@ _LARGER_N_REPLICATION_NOTE = (
 
 @dataclass
 class AdvanceResult:
-    """Results of the arm-8 advance step (OOF calibration + SHAP). PILOT N=121 everywhere."""
 
-    isotonic_cal: dict  # output of oof_calibrate(..., method="isotonic")
-    platt_cal: dict     # output of oof_calibrate(..., method="platt")
-    shap_top20_list: list[dict]  # top-20 discordance genes by mean |SHAP|
+    isotonic_cal: dict  
+    platt_cal: dict     
+    shap_top20_list: list[dict]  
     replication_note: str
     supervised_result: SupervisedArmResult
 
 
 def run_advance(supervised_result: SupervisedArmResult) -> AdvanceResult:
-    """Run OOF calibration (isotonic + Platt) and SHAP for the supervised arm. PILOT N=121."""
     floor_result = supervised_result.floor_gate_result
 
-    # OOF calibration — uses the shared harness oof_calibrate which enforces the tripwire
-    # (calibrated ECE < 0.005 raises LedgerViolation — the ADR-0010 in-sample leak guard).
     isotonic_cal = oof_calibrate(floor_result, method="isotonic")
     platt_cal = oof_calibrate(floor_result, method="platt")
 
-    # SHAP top-20 discordance genes. Uses last_model (fitted on full data for SHAP only — documented).
     shap_list = harness_shap_top20(
         floor_result,
         supervised_result.X_full,
@@ -1694,7 +1356,6 @@ def run_advance(supervised_result: SupervisedArmResult) -> AdvanceResult:
 
 
 def _render_advance_section(adv: AdvanceResult, today_str: str) -> str:
-    """Markdown for the advance section appended to arm8_REPORT_25-07-26.md. PILOT N=121 everywhere."""
     sr = adv.supervised_result
     iso = adv.isotonic_cal
     pla = adv.platt_cal
@@ -1855,7 +1516,6 @@ def _render_advance_section(adv: AdvanceResult, today_str: str) -> str:
 
 
 def _advance_payload(adv: AdvanceResult, today_str: str) -> dict:
-    """JSON-serialisable metrics for the advance step. PILOT N=121 caveat in every field."""
     sr = adv.supervised_result
     iso = adv.isotonic_cal
     pla = adv.platt_cal
@@ -1901,7 +1561,7 @@ def _advance_payload(adv: AdvanceResult, today_str: str) -> dict:
                 ],
             },
         },
-        "calibrated_ece": iso["calibrated_ece_mean"],  # primary field (isotonic)
+        "calibrated_ece": iso["calibrated_ece_mean"],  
         "shap_top20": adv.shap_top20_list,
         "replication_note": "No suitable public dataset identified — open residual (see advance report).",
         "construct_control_reference": (
@@ -1913,7 +1573,6 @@ def _advance_payload(adv: AdvanceResult, today_str: str) -> dict:
 
 
 def _save_shap_csv(shap_list: list[dict], report_dir: Path, stamp: str) -> Path:
-    """Write SHAP top-20 to CSV. Returns the path."""
     rows = [{"rank": e["rank"], "gene": e["feature"], "mean_abs_shap": e["mean_abs_shap"]}
             for e in shap_list]
     df = pd.DataFrame(rows)
@@ -1923,11 +1582,10 @@ def _save_shap_csv(shap_list: list[dict], report_dir: Path, stamp: str) -> Path:
 
 
 def _save_shap_png(shap_list: list[dict], report_dir: Path, stamp: str) -> Path | None:
-    """Write SHAP top-20 bar chart PNG. Returns path or None if matplotlib is unavailable."""
     try:
-        import matplotlib  # noqa: PLC0415 — optional dep, lazy import
-        matplotlib.use("Agg")  # non-interactive backend (no display required)
-        import matplotlib.pyplot as plt  # noqa: PLC0415
+        import matplotlib  
+        matplotlib.use("Agg")  
+        import matplotlib.pyplot as plt  
     except ImportError:
         return None
 
@@ -1950,7 +1608,6 @@ def _save_shap_png(shap_list: list[dict], report_dir: Path, stamp: str) -> Path 
 
 
 def _append_advance_to_report(report_dir: Path, section_md: str) -> Path:
-    """APPEND the advance section to arm8_REPORT_25-07-26.md. Idempotent on re-run."""
     target = report_dir / "arm8_REPORT_25-07-26.md"
     if not target.exists():
         raise RuntimeError(
@@ -1979,20 +1636,19 @@ def main(argv: list[str] | None = None) -> int:
     stamp = date.today().strftime("%Y%m%d")
 
     if args.supervised_arm:
-        print("arm8 --supervised-arm: PILOT N=121 — underpowered, hypothesis-generating only.")  # noqa: T201
+        print("arm8 --supervised-arm: PILOT N=121 — underpowered, hypothesis-generating only.")  
         try:
             supervised_result = run_supervised_arm(cfg, data_root)
         except (ImportError, RuntimeError, LedgerViolation) as exc:
-            print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"BLOCKED: {exc}", file=sys.stderr)  
             return 2
 
-        # Write standalone supervised-arm report + JSON.
         today_str = date.today().strftime("%Y-%m-%d")
         sup_md = _render_supervised_arm_report(supervised_result, today_str)
         try:
             validate_arm_report_keywords(sup_md, "arm8")
         except LedgerViolation as exc:
-            print(f"LEDGER GUARD FAILED on supervised-arm report: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"LEDGER GUARD FAILED on supervised-arm report: {exc}", file=sys.stderr)  
             return 1
 
         sup_report_path = report_dir / f"supervised_arm_{stamp}.md"
@@ -2002,105 +1658,96 @@ def main(argv: list[str] | None = None) -> int:
 
         ci_lo, ci_hi = supervised_result.delong_ci95
         null_tag = "NULL (CI crosses 0.50)" if supervised_result.ci_crosses_050 else "non-null (CI > 0.50)"
-        print(f"arm8 supervised-arm — report: {sup_report_path}")  # noqa: T201
-        print(  # noqa: T201
+        print(f"arm8 supervised-arm — report: {sup_report_path}")  
+        print(  
             f"  PILOT N={supervised_result.n} (underpowered) | {supervised_result.n_features} features | "
             f"AUROC={supervised_result.auroc:.3f} CI=[{ci_lo:.3f},{ci_hi:.3f}] ECE={supervised_result.ece:.3f} "
             f"-> {null_tag}"
         )
-        print(f"  json: {sup_json_path}")  # noqa: T201
-        print("  leakage guard: PASS (assert_no_forbidden_inputs + assert_no_survival_columns)")  # noqa: T201
-        print("  ledger guard: PASS (validate_arm_report_keywords arm8)")  # noqa: T201
+        print(f"  json: {sup_json_path}")  
+        print("  leakage guard: PASS (assert_no_forbidden_inputs + assert_no_survival_columns)")  
+        print("  ledger guard: PASS (validate_arm_report_keywords arm8)")  
 
-        # Also run --advance inline so a single command does both.
         if not args.advance:
-            print(  # noqa: T201
+            print(  
                 "  NOTE: run --advance to add OOF calibration + SHAP + replication note "
                 "and update the main report."
             )
             return 0
 
-        # Fall through to the advance step below (supervised_result is available).
     else:
-        supervised_result = None  # type: ignore[assignment]
+        supervised_result = None  
 
     if args.advance:
         if supervised_result is None:
-            # --advance run standalone: re-run the supervised arm first.
-            print("arm8 --advance: running supervised arm first (PILOT N=121)...")  # noqa: T201
+            print("arm8 --advance: running supervised arm first (PILOT N=121)...")  
             try:
                 supervised_result = run_supervised_arm(cfg, data_root)
             except (ImportError, RuntimeError, LedgerViolation) as exc:
-                print(f"BLOCKED (supervised arm): {exc}", file=sys.stderr)  # noqa: T201
+                print(f"BLOCKED (supervised arm): {exc}", file=sys.stderr)  
                 return 2
 
-        print("arm8 --advance: OOF calibration + SHAP + replication note (PILOT N=121)...")  # noqa: T201
+        print("arm8 --advance: OOF calibration + SHAP + replication note (PILOT N=121)...")  
         try:
             adv = run_advance(supervised_result)
         except LedgerViolation as exc:
-            print(f"CALIBRATION TRIPWIRE (in-sample leak): {exc}", file=sys.stderr)  # noqa: T201
+            print(f"CALIBRATION TRIPWIRE (in-sample leak): {exc}", file=sys.stderr)  
             return 1
         except (ImportError, RuntimeError) as exc:
-            print(f"BLOCKED (advance): {exc}", file=sys.stderr)  # noqa: T201
+            print(f"BLOCKED (advance): {exc}", file=sys.stderr)  
             return 2
 
         today_str = date.today().strftime("%Y-%m-%d")
         adv_section = _render_advance_section(adv, today_str)
 
-        # Validate ledger before writing anything to disk.
         try:
             validate_arm_report_keywords(adv_section, "arm8")
         except LedgerViolation as exc:
-            print(f"LEDGER GUARD FAILED on advance report section: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"LEDGER GUARD FAILED on advance report section: {exc}", file=sys.stderr)  
             return 1
 
-        # Write artifacts.
         adv_md_path = report_dir / f"advance_{stamp}.md"
         adv_json_path = report_dir / f"advance_{stamp}.json"
         adv_md_path.write_text(adv_section)
         adv_json_path.write_text(json.dumps(_advance_payload(adv, today_str), indent=2))
 
-        # SHAP CSV + PNG.
         csv_path = _save_shap_csv(adv.shap_top20_list, report_dir, stamp)
         png_path = _save_shap_png(adv.shap_top20_list, report_dir, stamp)
 
-        # Append advance section to the main arm8 report.
         report_target = _append_advance_to_report(report_dir, adv_section)
 
-        # Final ledger guard on the full updated report.
         try:
             validate_arm_report_keywords(report_target.read_text(), "arm8")
         except LedgerViolation as exc:
-            print(f"LEDGER GUARD FAILED on full report after append: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"LEDGER GUARD FAILED on full report after append: {exc}", file=sys.stderr)  
             return 1
 
         iso = adv.isotonic_cal
         pla = adv.platt_cal
         top1 = adv.shap_top20_list[0] if adv.shap_top20_list else {}
-        print(f"arm8 advance — advance md: {adv_md_path}")  # noqa: T201
-        print(f"  json: {adv_json_path}")  # noqa: T201
-        print(f"  shap csv: {csv_path}")  # noqa: T201
+        print(f"arm8 advance — advance md: {adv_md_path}")  
+        print(f"  json: {adv_json_path}")  
+        print(f"  shap csv: {csv_path}")  
         if png_path:
-            print(f"  shap png: {png_path}")  # noqa: T201
+            print(f"  shap png: {png_path}")  
         else:
-            print("  shap png: SKIPPED (matplotlib not available) — CSV written instead")  # noqa: T201
-        print(f"  report updated: {report_target}")  # noqa: T201
-        print(  # noqa: T201
+            print("  shap png: SKIPPED (matplotlib not available) — CSV written instead")  
+        print(f"  report updated: {report_target}")  
+        print(  
             f"  PILOT N={supervised_result.n} | isotonic ECE {iso['raw_ece_mean']:.4f}->"
             f"{iso['calibrated_ece_mean']:.4f} | platt ECE {pla['raw_ece_mean']:.4f}->"
             f"{pla['calibrated_ece_mean']:.4f}"
         )
-        print(f"  SHAP top-1: {top1.get('feature','?')} (mean|SHAP|={top1.get('mean_abs_shap',0):.6f})")  # noqa: T201
-        print("  ledger guard: PASS (validate_arm_report_keywords arm8)")  # noqa: T201
-        print("  Larger-N replication: no suitable public dataset identified — open residual")  # noqa: T201
+        print(f"  SHAP top-1: {top1.get('feature','?')} (mean|SHAP|={top1.get('mean_abs_shap',0):.6f})")  
+        print("  ledger guard: PASS (validate_arm_report_keywords arm8)")  
+        print("  Larger-N replication: no suitable public dataset identified — open residual")  
         return 0
 
     if args.construct_control:
         try:
             ctrl = run_construct_control(cfg, data_root)
         except (ImportError, RuntimeError) as exc:
-            # honest BLOCKED — could not stage data or build the RNA-independent anchor; never fake it
-            print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+            print(f"BLOCKED: {exc}", file=sys.stderr)  
             return 2
 
         section_md = _render_control_section(ctrl, cfg)
@@ -2109,9 +1756,9 @@ def main(argv: list[str] | None = None) -> int:
         ctrl_json.write_text(json.dumps(_control_payload(ctrl, cfg), indent=2))
 
         o, c = ctrl.original.result, ctrl.control.result
-        print(f"arm8 construct-control — appended to: {report_target}")  # noqa: T201
-        print(f"  control json: {ctrl_json}")  # noqa: T201
-        print(  # noqa: T201
+        print(f"arm8 construct-control — appended to: {report_target}")  
+        print(f"  control json: {ctrl_json}")  
+        print(  
             f"  anchor={ctrl.anchor} | PILOT N={c.n} | RNA-axis r={_fmt_r(o.pearson_r)} -> "
             f"protein-axis r={_fmt_r(c.pearson_r)} CI={_fmt_ci(c.boot_ci95)} shuffle|r|="
             f"{_fmt_r(c.shuffle_r)} ECE={_fmt_r(c.ece)} | axis-agree r={_fmt_r(ctrl.axis_agreement_r)} "
@@ -2120,7 +1767,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not args.floor_gate:
-        print(  # noqa: T201
+        print(  
             f"arm8: {_PURPOSE}. Pass --floor-gate to run the CPTAC-BRCA discordance-correlation "
             "floor gate, or --construct-control to run the RNA-independent-axis construct control, "
             "or --supervised-arm / --advance for the Brief B advance step (PILOT N=121)."
@@ -2130,8 +1777,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         outcome = run_arm8(cfg, data_root)
     except (ImportError, RuntimeError) as exc:
-        # honest BLOCKED — data could not be staged; NEVER fabricate a floor number
-        print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"BLOCKED: {exc}", file=sys.stderr)  
         return 2
 
     report_path = report_dir / f"floor_gate_{stamp}.md"
@@ -2148,8 +1794,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     ece = "NaN" if not np.isfinite(r.ece) else f"{r.ece:.3f}"
     shuf = "NaN" if not np.isfinite(r.shuffle_r) else f"{r.shuffle_r:.3f}"
-    print(f"arm8 floor gate — report: {report_path}")  # noqa: T201
-    print(  # noqa: T201
+    print(f"arm8 floor gate — report: {report_path}")  
+    print(  
         f"  PILOT N={r.n} (underpowered) | panel={r.n_panel_genes} genes | PAM50={r.n_pam50_genes}/50 "
         f"| Pearson r={rr} bootCI={ci} shuffle|r|={shuf} ECE={ece} -> {outcome.decision}"
     )

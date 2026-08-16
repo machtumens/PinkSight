@@ -1,21 +1,3 @@
-"""G3 #3 — counterfactual saliency for the GRADE head (HiResCAM + minimal-perturbation flip).
-
-Counterfactual input-sensitivity for grade CHARACTERISATION — NOT a growth-rate / kinetics claim,
-NOT a causal intervention (decisions.md LOCK-1). Grade head ONLY: the subtype head has negligible
-imaging signal (H6 Shapley −0.025), so counterfactuals over it are ill-defined. Allowed wording:
-"model grade characterisation is sensitive to enhancement pattern in region Z".
-
-Two modes:
-  --smoke-only : run on the synthetic tiny-CNN grade fixture (E-5). $0 CPU. Step 3.3.
-                 Gate: flip_achieved on >= 1/3 synthetic patients.
-  (default)    : full run on a trained G3 grade-head encoder checkpoint (Step 3.6, GPU) — computes
-                 HiResCAM IoU / pointing vs nnU-Net PREDICTED masks + 3-seed randomization sanity
-                 (Step 3.5 hardening) + counterfactual flip rate. OUT OF SCOPE for the $0 leg; the
-                 checkpoint path raises until a trained G3 grade encoder exists.
-
-    PYTHONPATH=src .venv/bin/python scripts/xai_counterfactual_grade.py --smoke-only \
-        --out reports/G3_fusion_arch_bundle/smoke_xai_cf.json
-"""
 from __future__ import annotations
 
 import argparse
@@ -28,10 +10,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
-from fixtures.synthetic import tiny_cnn_grade_fixture  # noqa: E402
+from fixtures.synthetic import tiny_cnn_grade_fixture  
 
-from pinksight.xai.faithfulness import randomization_test  # noqa: E402
-from pinksight.xai.saliency import (  # noqa: E402
+from pinksight.xai.faithfulness import randomization_test  
+from pinksight.xai.saliency import (  
     counterfactual_grade_map,
     randomize_weights,
 )
@@ -39,17 +21,11 @@ from pinksight.xai.saliency import (  # noqa: E402
 
 def mean_randomization_rel_drop(model, vol, cam_trained, grade_head, target_layer,
                                 n_seeds: int = 3) -> dict:
-    """Step 3.5 hardening (TICKET-001 promotion): 3-seed AVERAGE randomization sanity.
-
-    A faithful HiResCAM map concentrates in its ROI; a weight-randomized map should not. Single-seed
-    rel_drop is noisy (faithfulness.py line ~79 caveat), so we average over `n_seeds` re-init seeds
-    and report mean_rel_drop. Returns {per_seed_rel_drop, mean_rel_drop, passed}."""
     rels = []
     for seed in range(n_seeds):
         rnd = randomize_weights(model, seed=seed)
-        # HiResCAM on the randomized trunk via the grade-head wrapper the counterfactual util uses.
         res = counterfactual_grade_map(rnd, vol, grade_head, _find_layer(rnd, target_layer),
-                                       n_steps=1)  # n_steps=1: we only need the randomized cam here
+                                       n_steps=1)  
         r = randomization_test(cam_trained, res["cam_original"])
         rels.append(r["rel_drop"])
     mean_rel = float(np.mean(rels))
@@ -58,8 +34,6 @@ def mean_randomization_rel_drop(model, vol, cam_trained, grade_head, target_laye
 
 
 def _find_layer(randomized_model, orig_layer):
-    """Map the original target layer to the same position in a deep-copied randomized model."""
-    # randomize_weights deep-copies the module; index 2 of the trunk Sequential is the target conv.
     try:
         return randomized_model[2]
     except (TypeError, KeyError, IndexError):
@@ -67,12 +41,10 @@ def _find_layer(randomized_model, orig_layer):
 
 
 def run_smoke(out_path: Path) -> dict:
-    """$0 CPU smoke on the synthetic grade fixture — architecture validity + flip check (Step 3.3)."""
     fx = tiny_cnn_grade_fixture()
     model, grade_head, target_layer, vol = (
         fx["model"], fx["grade_head"], fx["target_layer"], fx["volume"])
 
-    # Run the counterfactual on 3 synthetic "patients" (jittered copies of the fixture volume).
     rng = np.random.default_rng(0)
     import torch
     flips, deltas, rhos = [], [], []
@@ -96,7 +68,7 @@ def run_smoke(out_path: Path) -> dict:
         "cf_flip_rate": round(flip_rate, 4),
         "cf_flip_achieved_count": int(sum(flips)),
         "n_synthetic_patients": 3,
-        "cf_flip_gate_met": bool(sum(flips) >= 1),   # Step 3.3 gate: >= 1/3 patients flip
+        "cf_flip_gate_met": bool(sum(flips) >= 1),   
         "delta_logit_mean": round(float(np.mean(deltas)), 4),
         "spearman_rho_mean": round(float(np.mean(rhos)), 4),
         "sanity_3seed": sanity,
@@ -117,7 +89,6 @@ def run_smoke(out_path: Path) -> dict:
 
 def run_full(encoder_ckpt, target_layer, n_sanity_seeds, sanity_threshold, split_yaml,
              masks_dir, out_path):
-    """Full XAI run on a trained G3 grade encoder (Step 3.6). OUT OF SCOPE for the $0 leg."""
     raise SystemExit(
         "xai_counterfactual_grade.py full run (Step 3.6) needs a trained G3 grade-head encoder "
         "checkpoint, which does not exist in the $0 local leg. Run --smoke-only for the CPU gate. "
@@ -146,8 +117,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # No CLI args (e.g. the jury notebook run top-to-bottom): run the built-in fixture
-    # self-check instead of erroring on the required --out. main() still serves the full CLI.
     if len(sys.argv) > 1:
         main()
     else:

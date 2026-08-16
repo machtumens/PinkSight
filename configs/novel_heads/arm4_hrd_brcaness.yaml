@@ -1,39 +1,24 @@
-# Arm 4 (Wave 1) — HRD/BRCAness continuous proxy regressor, pan-subtype (novel heads, OPSI 2026).
-#
-# Ledger (LOCK-1/LOCK-2): HRD/BRCAness CHARACTERISATION at diagnosis (pan-subtype + continuous — the
-# published gap vs TNBC-only/binary prior work). BRCA1/2 germline mutation status held out of inputs
-# (label surrogate). Do NOT drift toward PARP/olaparib-response prediction (treatment-outcome claim,
-# FORBIDDEN).
-#
-# STATUS: DRY STUB (populated: false). Dataset paths are placeholders; the execute agent stages
-# TCGA-BRCA CNA/methylation and flips populated -> true before the floor gate runs.
 
 schema: pinksight.novel-heads/arm4-v1
 arm: 4
 wave: 1
-role: hrd-brcaness-characterisation         # at-diagnosis; standalone tabular organ
+role: hrd-brcaness-characterisation
 compute: cpu-zero-dollar
 model: lightgbm
 populated: false
 
-# --- Datasets (placeholders — GDC / cBioPortal, public) --------------------------------------------
 datasets:
-  tcga_brca_cna: TBD/tcga_brca_cna.txt                  # CNA burden track
-  tcga_brca_methylation: TBD/tcga_brca_methylation_450k.txt  # 450k methylation β-values
-  hrd_scores: TBD/tcga_brca_hrd_score.tsv               # published Scarpa/Telli HRD_score column
+  tcga_brca_cna: TBD/tcga_brca_cna.txt
+  tcga_brca_methylation: TBD/tcga_brca_methylation_450k.txt
+  hrd_scores: TBD/tcga_brca_hrd_score.tsv
 
-# --- Target ----------------------------------------------------------------------------------------
-target: hrd_score                           # continuous HRD (primary) + binary BRCA1/2-methylation-silenced (composite)
+target: hrd_score
 
-# --- Dimensionality cap (MANDATORY — local CPU RAM; plan SUPPLEMENT Gap 3b) -------------------------
-# The 450k methylation matrix cannot fit a LightGBM fit in local CPU RAM. Retain at most the top-N
-# CpG sites by inter-patient variance before the fit. This cap is required, not advisory.
-max_features: 10000                         # top-10k CpG sites by inter-patient variance
+max_features: 10000
 
-# --- Thresholds (plan Wave 1 arm 4 spec — HRD floor is higher than subtype by convention) ----------
 seeds: [0, 1, 2]
-kill_threshold_auroc: 0.55                  # AUROC <= 0.55 (HRD harder than subtype) -> terminate
-greenlight_threshold_auroc: 0.65            # AUROC >= 0.65 AND DeLong CI LB >= 0.55 -> Pearson r for continuous arm
+kill_threshold_auroc: 0.55
+greenlight_threshold_auroc: 0.65
 greenlight_delong_ci_lb: 0.55
 
 ledger_guard: >

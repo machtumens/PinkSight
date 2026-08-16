@@ -1,10 +1,3 @@
-# PinkSight base config — read with pyyaml.
-# ponytail: full Hydra config groups arrive at G1 with the first real training run;
-# at G0 there are no experiments to compose, so this stays a flat YAML pyyaml can read.
-#
-# Rule 10 reproducibility per run = seed + pinned env (uv.lock) + git commit + manifest hash.
 seed: 42
 
-# Frozen patient-level split: carved ONCE at G0/G1, never regenerated (see configs/README.md).
-# Does not exist yet — the G0 audit produces the N-waterfall first.
 split: configs/split_v2.yaml

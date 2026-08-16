@@ -1,16 +1,3 @@
-"""FVA — Fusion-Value-Attribution: the packaged required-diagnostic any fusion claim must pass.
-
-Individual Shapley/shuffle/ceiling tools exist in the wild; the NOVELTY here is the *packaged
-required protocol* — four diagnostics that must ALL be present before a multimodal fusion result is
-believed: (1) Shapley attribution, (2) shuffle sentinel, (3) conditional-independence proxy, (4)
-information ceiling. See ``FVA_STANDARD.md`` for the written checklist.
-
-Public contract (C2): ``run_fva(config: FVAConfig) -> FVAReport``.
-
-This module is the shared home of the exact logic that ``h6_modality_audit.py`` and
-``h4_info_ceiling.py`` already pre-registered; those two scripts become thin CLI wrappers around it
-(C2-7 / C2-8) with byte-identical numeric output guarded by the C2-13 regression gate.
-"""
 
 from __future__ import annotations
 
@@ -59,7 +46,6 @@ def _subtype_labels(manifest: Path) -> pd.Series:
 
 
 def _coalition_auroc(coalition, streams, y, groups, seeds, n_splits):
-    """Multi-seed pooled-OOF AUROC for a coalition (mirrors h6.coalition_auroc; returns mean+detail)."""
     from sklearn.metrics import roc_auc_score
     per_auc, oof_by_seed = {}, {}
     for s in seeds:
@@ -82,27 +68,12 @@ def _coalition_auroc(coalition, streams, y, groups, seeds, n_splits):
 
 def run_fva(config: FVAConfig, streams: dict | None = None, y=None, groups=None,
             tag: str = "run") -> FVAReport:
-    """Run the four FVA diagnostics on a supplied 3-stream set and render a report.
-
-    Args:
-        config: FVAConfig (paths, seeds, split, frozen verdict thresholds).
-        streams: dict ``{name: {"X": ndarray, "impute": bool, "meta": dict}}`` aligned on the same
-            pid order, for the players in ``config.players``. If None, the caller must supply y/groups
-            too — but the standard use passes a prebuilt streams dict.
-        y: aligned subtype labels (0/1).
-        groups: aligned patient-id array (for patient-disjoint CV).
-        tag: report filename tag (``fva_{tag}_REPORT.json/.txt``).
-
-    Returns:
-        FVAReport with all four components + evaluated verdict flags + synthesized verdict.
-    """
     if streams is None or y is None or groups is None:
         raise ValueError("run_fva requires prebuilt streams + y + groups (use fva_a1_report or "
                          "the h6/h4 wrappers to build them)")
 
     players = list(config.players)
 
-    # (1) + delta: all coalitions -> Shapley + MRI ΔAUC(add mri | others)
     from pinksight.metrics import delong_paired
     coalition_detail, coalition_auc = {}, {}
     for r in range(len(players) + 1):
@@ -127,19 +98,16 @@ def run_fva(config: FVAConfig, streams: dict | None = None, y=None, groups=None,
         mri_delta = float(np.mean(d_perseed))
         mri_p = float(np.mean(p_perseed))
 
-    # (2) shuffle sentinel
     sentinels = stream_shuffle_sentinels(streams, y, groups, coalition_detail,
                                          seeds=config.seeds, n_splits=config.n_splits,
                                          stream_names=tuple(players))
 
-    # (3) conditional-independence proxy (needs a clinical stream)
     cond = {}
     if "clinical" in players:
         imaging = tuple(p for p in players if p != "clinical")
         cond = conditional_info_proxy(streams, y, groups, n_splits=config.n_splits,
                                       imaging_streams=imaging)
 
-    # strip oof arrays before serialising
     for det in coalition_detail.values():
         det.pop("_oof_by_seed", None)
 

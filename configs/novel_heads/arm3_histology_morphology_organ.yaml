@@ -1,50 +1,30 @@
-# Arm 3 (Wave 3, GATED) — foundation-embedding multi-task histology "morphology organ".
-#
-# Ledger (LOCK-1): multi-task tissue/nuclei/TIL morphological CHARACTERISATION at diagnosis
-# (TCGA-BRCA). No cross-cohort generalisation claim; no fusion with the Duke encoder without a NEW
-# ADR. Duke has no matched WSI — TCGA-BRCA only, independent companion organ.
-#
-# GATED: Wave 3 does not start until >= 1 Wave 1/2 GREENLIGHT. GPU embed pass authorised only after
-# the CPU floor GREENLIGHTs. Track-B entrypoint comes from trackb_entrypoint.yaml (never hardcoded).
-#
-# STATUS: POPULATED 2026-07-28 (Wave 3 Phase 2, CPU-only session). Phase 0f resolved to BRANCH A:
-# pre-extracted slide embeddings already exist on disk from the July TITAN POC
-# (data/pathology/features/TCGA_TITAN_features.pkl, 11658 x 768; manifest 677 slides / 640 patients),
-# so the CPU floor gate needs NO raw-WSI download (TCGA-BRCA raw is ~1-2 TB; only 99 GB free).
-# GPU embed pass (Phase 7) OUT OF SCOPE until Gate 2 is granted.
 
 schema: pinksight.novel-heads/arm3-v1
 arm: 3
 wave: 3
-role: histology-morphology-characterisation   # at-diagnosis; TCGA-BRCA only
-compute: cpu-floor-then-gpu-embed             # floor gate CPU; embed pass ~$8-16 RunPod on GREENLIGHT
-model: clam_mil                               # frozen UNI/CONCH embeddings -> lightweight multi-task MIL head
+role: histology-morphology-characterisation
+compute: cpu-floor-then-gpu-embed
+model: clam_mil
 populated: true
-gated_behind: wave1_or_wave2_greenlight       # SATISFIED 2026-07-28: arms 1/2/4/8 GREENLIGHT
-report_keyword_guard_arm_id: arm3             # -> wave1_eval_harness.validate_arm_report_keywords
+gated_behind: wave1_or_wave2_greenlight
+report_keyword_guard_arm_id: arm3
 
-# --- Datasets --------------------------------------------------------------------------------------
-# BRANCH A (resolved 2026-07-28, Phase 0f): the CPU floor gate reads pre-extracted slide-level
-# embeddings already on disk. Raw-WSI acquisition (Branch B, ~1-2 TB) is NOT required and NOT run.
 datasets:
-  pre_extracted_features: data/pathology/features/TCGA_TITAN_features.pkl   # 11658 x 768 (VERIFIED)
-  pre_extracted_manifest: data/pathology/features/tcga_brca_titan_manifest.csv  # 677 slides / 640 pts
-  tcga_brca_wsi: TBD/tcga_brca_diagnostic_slides    # Branch B — NOT downloaded; GPU-pass only
-  bcss: TBD/BCSS                                     # GPU multi-task pass only (Phase 7, out of scope)
-  nucls: TBD/NuCLS                                   # GPU multi-task pass only (Phase 7, out of scope)
-  pannuke: TBD/PanNuke                               # GPU multi-task pass only (Phase 7, out of scope)
-  tiger: TBD/TIGER                                   # GPU multi-task pass only (Phase 7, out of scope)
+  pre_extracted_features: data/pathology/features/TCGA_TITAN_features.pkl
+  pre_extracted_manifest: data/pathology/features/tcga_brca_titan_manifest.csv
+  tcga_brca_wsi: TBD/tcga_brca_diagnostic_slides
+  bcss: TBD/BCSS
+  nucls: TBD/NuCLS
+  pannuke: TBD/PanNuke
+  tiger: TBD/TIGER
 
-# --- Track-B embedding entrypoint (verified at Wave 3 entry — never hardcode) -----------------------
 trackb_entrypoint_config: configs/novel_heads/trackb_entrypoint.yaml
 
-# --- Target ----------------------------------------------------------------------------------------
-target: multitask_morphology                # tissue-type + nuclei-TIL-density + stromal-proportion; LumA-vs-TNBC AUROC at floor
+target: multitask_morphology
 
-# --- Thresholds (plan Wave 3 arm 3 floor spec) -----------------------------------------------------
 seeds: [0, 1, 2]
-kill_threshold_auroc: 0.58                   # AUROC <= 0.58 on TCGA-BRCA -> terminate WITHOUT GPU spend
-greenlight_threshold_auroc: 0.65             # AUROC >= 0.65 AND DeLong CI LB >= 0.55 -> authorise GPU embed pass
+kill_threshold_auroc: 0.58
+greenlight_threshold_auroc: 0.65
 greenlight_delong_ci_lb: 0.55
 
 ledger_guard: >

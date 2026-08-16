@@ -1,31 +1,3 @@
-#!/usr/bin/env python3
-"""PinkSight zero-data demo orchestrator — 3-tier, dependency-aware, no network, no data.
-
-`make demo` invokes this. It proves the packaged pipeline is *runnable end-to-end* on a clean
-clone with **zero data files and zero network access**, degrading gracefully by which optional
-dependency extra the cloner installed:
-
-  * **Tier 0** (stdlib, base `pip install -e .`, ALWAYS runs): `pinksight_cli.py --selfcheck` —
-    exercises the backend / dispatch / ledger-guard *wiring* (the forbidden-term firewall scan).
-    If Tier 0 fails the base install itself is broken, so nothing heavier is attempted.
-  * **Tier 1** (`pip install -e '.[arms]'` — scikit-learn + lightgbm, **no torch**): the Track-B
-    (WSI+genomics) and Track-C (tabular) synthetic control-sentinels.
-  * **Tier 2** (`pip install -e '.[ml]'` — torch + monai + sklearn, heavy): the Track-A and
-    fastMRI-NYU synthetic control-sentinels.
-
-Every number printed here is **SYNTHETIC — NOT A RESULT**: forward-only plumbing/integrity proof,
-no real patient, no LOCK moved, no biology. A control-sentinel stream PASSES when BOTH of its
-controls behave: the *negative* control's real signal collapses to the shuffle (label-free) floor
-(DeLong CI crosses 0.50), and the *positive* control recovers its known injected signal while its
-shuffle companion collapses to ~0.50.
-
-Streams whose extra is not installed print an explicit `SKIPPED (needs pip install -e '.[…]')`
-line — they NEVER crash the run and NEVER count as a real failure. Exit code is 0 iff Tier 0
-passed AND every dependency-satisfied stream that actually ran is PASS.
-
-Usage:
-    python3 scripts/run_demo.py [--n-patients N] [--seed S]
-"""
 
 from __future__ import annotations
 
@@ -38,7 +10,7 @@ import tempfile
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # scripts/ -> repo root
+ROOT = Path(__file__).resolve().parents[1]  
 SCRIPTS = ROOT / "scripts"
 CLI = ROOT / "pinksight_cli.py"
 
@@ -47,13 +19,6 @@ SYNTHETIC_FOOTER = (
     "no real patient, no LOCK moved, no group-vs-group comparison, no biology."
 )
 
-# Per-stream demo patient counts, tuned empirically at seed 0 (deterministic — verified byte-stable
-# across repeat runs) against e2e_report_contract's control-sentinel PASS bars: positive real AUROC
-# > 0.75, positive shuffle <= 0.55, negative DeLong CI crosses 0.50. Track-C (9-feature tabular) is
-# cheap, so it runs LARGE for a robust shuffle collapse (~11s); Track-B (1542-dim WSI+genomics) is
-# slow, so it runs SMALL — it still clears every bar deterministically at seed 0 (~36s). Tier-2
-# (torch) counts are best-effort defaults, UNVERIFIED in a torch-free sandbox (see the phase-3
-# EXECUTE T10 known-gap). `--n-patients` overrides ALL of these.
 DEMO_N = {
     "Track-B": 800,
     "Track-C": 4000,
@@ -61,7 +26,6 @@ DEMO_N = {
     "fastMRI-NYU": 600,
 }
 
-# (label, script filename, tier, dependency module that must be importable)
 STREAMS = [
     ("Track-B", "e2e_synthetic_trackb_run.py", 1, "sklearn"),
     ("Track-C", "e2e_synthetic_trackc_run.py", 1, "sklearn"),
@@ -73,7 +37,6 @@ TIER_EXTRA = {1: ".[arms]", 2: ".[ml]"}
 
 
 def _has(module: str) -> bool:
-    """True iff `module` is importable, with NO import side effects (find_spec never imports)."""
     try:
         return importlib.util.find_spec(module) is not None
     except (ImportError, ValueError):
@@ -81,7 +44,6 @@ def _has(module: str) -> bool:
 
 
 def run_tier0() -> bool:
-    """Run the stdlib CLI selfcheck. Returns True on exit 0. Prints its own result line."""
     print("── Tier 0 (stdlib, base install) ─────────────────────────────────────────────")
     proc = subprocess.run(
         [sys.executable, str(CLI), "--selfcheck"],
@@ -102,7 +64,6 @@ def run_tier0() -> bool:
 
 
 def _load_verdicts(out_dir: Path) -> list[dict]:
-    """Collect every controlVerdict block written into out_dir (top-level *.json only)."""
     verdicts = []
     for jf in sorted(out_dir.glob("*.json")):
         try:
@@ -116,10 +77,6 @@ def _load_verdicts(out_dir: Path) -> list[dict]:
 
 
 def run_stream(label: str, script: str, n: int, seed: int, out_dir: Path) -> dict:
-    """Run one synthetic control-sentinel script as a subprocess; return a result dict.
-
-    result = {label, status: PASS|FAIL, controls: [ {stream, verdict, auroc, shuffle}... ], note}
-    """
     out_dir.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
         [
@@ -209,7 +166,6 @@ def main() -> int:
         print(f"\n── {label} (Tier {tier}) ──")
         print(f"  SKIPPED (needs pip install -e '{TIER_EXTRA[tier]}')")
 
-    # ── Summary table ──────────────────────────────────────────────────────────
     print("\n" + "=" * 78)
     print("SUMMARY")
     print("-" * 78)

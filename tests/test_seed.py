@@ -1,4 +1,3 @@
-"""set_seed must be deterministic — same seed, same draws (reproducibility floor)."""
 
 import random
 

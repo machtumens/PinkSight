@@ -1,6 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 
-// Every inference is logged: model hash, seed, split, provenance. Integrity as a feature.
 const LOG = [
   { t: "2026-07-13 15:42", study: "DUKE-0421", event: "characterise", hash: "sha256:demo0000", by: "researcher" },
   { t: "2026-07-13 15:41", study: "DUKE-0421", event: "import DICOM", hash: "—", by: "researcher" },

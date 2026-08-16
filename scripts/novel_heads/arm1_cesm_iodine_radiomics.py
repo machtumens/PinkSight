@@ -1,43 +1,3 @@
-"""Arm 1 (Wave 2) — CDD-CESM iodine-uptake-signature characterisation head. FLOOR GATE.
-
-Purpose (one line): characterise the iodine-enhancement phenotype AT DIAGNOSIS from the CESM
-**recombined** channel via pyradiomics -> shared floor gate (BI-RADS >= 4 vs <= 3), lesion-level.
-
-The floor gate is the cheapest de-risk (the same radiomics-first discipline that established the Duke
-imaging null, ADR-0001 / ADR-0008): can classical texture/first-order features of the iodine-uptake
-(recombined) channel, INSIDE the hand-drawn lesion ROI, recover the BI-RADS suspicion category on
-held-out (patient-disjoint) images at all? It produces the number (AUROC + DeLong CI + ECE +
-multi-seed + a shuffle sentinel) and the KILL / GREENLIGHT decision vs the config thresholds. No
-deep-learning extension is attempted here (that would need a NEW ADR — CESM encoder training is not
-covered by any prior ADR; Duke DCE-MRI kinetics are a physically distinct signal).
-
-Ledger guard (LOCK-1, critical): the organ's output is labelled "iodine-enhancement phenotype
-CHARACTERISATION at diagnosis from the CESM recombined channel" EVERYWHERE. It characterises the
-enhancement phenotype of ALREADY-IDENTIFIED findings (lesion-level, ROI-gated). It is NEVER early
-detection, NEVER a screening tool, NEVER pre-detection in healthy tissue. BI-RADS is a lesion-level
-characterisation label, not a healthy-tissue screening endpoint. Every forbidden term co-locates only
-inside a "does NOT do" firewall (arm 6 precedent).
-
-Data (public, staged under data/cdd_cesm/):
-  - images/CDD-CESM/.../P{ID}_{L|R}_CM_{CC|MLO}.jpg   — CESM RECOMBINED (iodine-uptake) channel JPGs
-  - Radiology-manual-annotations.xlsx (sheet "all")  — BI-RADS + pathology + Patient_ID labels
-  - Radiology_hand_drawn_segmentations_v2.csv        — per-image lesion polygon ROIs (VGG-VIA format)
-Provenance: CDD-CESM (Categorized Digital Database for Contrast-Enhanced Spectral Mammography),
-Khaled et al. 2022 (Sci Data / Mendeley / Kaggle mirror `ringoospina/cdd-cesm-excel` +
-`hanaraafatt/cdd-cesm`). ~326 patients / ~2000 images.
-
-Eval integrity (LOCK-2, decisions.md / plan Shared Evaluation Spine):
-  - PATIENT-disjoint CV (a patient never spans train/val) — radiomics extracted per-lesion but folded
-    by Patient_ID. Both breasts / both views of one patient stay on the same side of the split.
-  - Leakage guard: the feature matrix is pyradiomics texture only; no ER/PR/HER2/Ki-67/subtype column
-    is reachable as an input (there is no such column in CDD-CESM anyway) — the shared
-    `assert_no_forbidden_inputs` gate runs on the feature columns before every fit.
-  - Never a bare number: AUROC + DeLong 95% CI + ECE at >= 3 seeds (shared wave1_eval_harness).
-  - SHUFFLE SENTINEL: the label is permuted and the identical CV re-run; the shuffled AUROC must
-    collapse to ~0.50, proving leakage-cleanliness (arm-4 / arm-8 discipline).
-
-Plan: process/general-plans/active/novel-heads-roadmap_25-07-26/novel-heads-roadmap_PLAN_25-07-26.md
-"""
 
 from __future__ import annotations
 
@@ -52,38 +12,30 @@ import numpy as np
 import pandas as pd
 import yaml
 
-# Repo root on sys.path so `pinksight` + the sibling harness import when run as a bare script.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from scripts.novel_heads.wave1_eval_harness import (  # noqa: E402
+from scripts.novel_heads.wave1_eval_harness import (  
     FloorGateResult,
     run_floor_gate,
 )
-from tests.test_novel_heads_leakage import assert_no_forbidden_inputs  # noqa: E402
+from tests.test_novel_heads_leakage import assert_no_forbidden_inputs  
 
 _PURPOSE = "characterise CESM iodine-enhancement phenotype at diagnosis (BI-RADS lesion floor gate)"
 
-# --- Feature-space / extraction controls -----------------------------------------------------------
-# PyRadiomics settings: fixed bin count (Nyul-robust) — the SAME extractor knob the G1 / pCR radiomics
-# floors use (binCount=32) so this arm slots into the project's established radiomics schema.
 _RADIOMICS_SETTINGS = {"binCount": 32, "label": 1}
-# 2D CESM images are large; downscale the long edge so a single-image pyradiomics extraction is fast
-# and memory-bounded. The ROI polygon is scaled by the same factor so the mask stays registered.
 _MAX_LONG_EDGE = 1024
-# Below this many matched lesions the floor CV is not trustworthy — record, do not fabricate a number.
 _MIN_LESIONS = 30
 
 
 @dataclass(frozen=True)
 class ArmConfig:
-    """Parsed arm-1 config knobs the floor gate needs (dataset paths + thresholds + seeds)."""
 
     cdd_cesm_root: Path
-    target: str  # "birads_ge4" (primary) — BI-RADS >= 4 vs <= 3
+    target: str  
     seeds: tuple[int, ...]
     kill_threshold_auroc: float
     greenlight_threshold_auroc: float
@@ -123,12 +75,6 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-# ==================================================================================================
-# Data staging + resolution. The stub config ships `cdd_cesm_root: TBD/CDD-CESM` (populated: false);
-# the execute agent stages the real CDD-CESM (Kaggle mirror) under data/cdd_cesm/. This resolver locates
-# the recombined-channel images + the annotation Excel + the segmentation CSV. A missing artefact raises
-# a clear BLOCKED reason with manual staging steps — never a fabricated number.
-# ==================================================================================================
 _ANNOT_XLSX = "Radiology-manual-annotations.xlsx"
 _SEG_CSV = "Radiology_hand_drawn_segmentations_v2.csv"
 
@@ -137,7 +83,7 @@ _SEG_CSV = "Radiology_hand_drawn_segmentations_v2.csv"
 class StagedPaths:
     annot_xlsx: Path
     seg_csv: Path
-    image_roots: tuple[Path, ...]  # dirs searched (recursively) for P*_CM_*.jpg
+    image_roots: tuple[Path, ...]  
 
 
 def _stage_instructions(data_dir: Path) -> str:
@@ -154,28 +100,17 @@ def _stage_instructions(data_dir: Path) -> str:
 
 
 def _resolve_staged(cfg: ArmConfig, data_root: Path) -> StagedPaths:
-    """Locate the annotation Excel, segmentation CSV, and recombined-image roots under data/cdd_cesm/."""
     data_dir = data_root / "data" / "cdd_cesm"
     annot = data_dir / _ANNOT_XLSX
     seg = data_dir / _SEG_CSV
     missing = [str(p) for p in (annot, seg) if not p.exists()]
     if missing:
         raise FileNotFoundError(_stage_instructions(data_dir))
-    # Images may live under data/cdd_cesm/images/** in any nesting the Kaggle mirror used; search both
-    # the images dir and the data dir root recursively at extraction time.
     image_roots = tuple(p for p in (data_dir / "images", data_dir) if p.exists())
     return StagedPaths(annot_xlsx=annot, seg_csv=seg, image_roots=image_roots)
 
 
-# ==================================================================================================
-# Label build (BI-RADS >= 4 vs <= 3 on the recombined/CM images).
-# ==================================================================================================
 def _parse_birads(value: object) -> int | None:
-    """Parse a BI-RADS cell to the MAX category integer present ('3$2' -> 3, '4' -> 4, '5' -> 5).
-
-    CDD-CESM encodes multi-finding images as `$`-joined categories; the max is the driving suspicion
-    for the image. Values outside 0-6 are ignored. Returns None when no category digit is present.
-    """
     import re
 
     ints = [int(x) for x in re.findall(r"[0-6]", str(value))]
@@ -183,11 +118,6 @@ def _parse_birads(value: object) -> int | None:
 
 
 def _load_cm_labels(paths: StagedPaths) -> pd.DataFrame:
-    """Recombined-channel (CM) label table: Image_name, Patient_ID, birads_num, pathology, y (>=4).
-
-    Reads the "all" sheet, keeps CESM/CM rows, parses BI-RADS, drops rows with no parseable BI-RADS.
-    `y` is the primary target: 1 if BI-RADS >= 4 (suspicious/malignant category), else 0.
-    """
     lab = pd.ExcelFile(paths.annot_xlsx).parse("all")
     lab["Image_name"] = lab["Image_name"].astype(str).str.strip()
     cm = lab[lab["Image_name"].str.contains("_CM_")].copy()
@@ -202,16 +132,7 @@ def _load_cm_labels(paths: StagedPaths) -> pd.DataFrame:
     return cm[["Image_name", "patient_id", "birads_num", "pathology", "y"]].reset_index(drop=True)
 
 
-# ==================================================================================================
-# Segmentation (VGG-VIA polygon) -> per-image lesion ROI.
-# ==================================================================================================
 def _load_cm_polygons(paths: StagedPaths) -> dict[str, list[tuple[np.ndarray, np.ndarray]]]:
-    """Map recombined-image stem -> list of (all_points_x, all_points_y) polygon vertex arrays.
-
-    The segmentation CSV is VGG Image Annotator format: `region_shape_attributes` is a JSON blob with
-    `name:"polygon"` + `all_points_x/all_points_y`. One image can carry multiple lesion polygons; we
-    keep them all and union their rasterised masks into the image ROI at extraction time.
-    """
     seg = pd.read_csv(paths.seg_csv)
     seg["fn"] = seg["#filename"].astype(str).str.strip()
     cm = seg[seg["fn"].str.contains("_CM_")]
@@ -236,7 +157,6 @@ def _load_cm_polygons(paths: StagedPaths) -> dict[str, list[tuple[np.ndarray, np
 
 
 def _find_image(image_roots: tuple[Path, ...], stem: str) -> Path | None:
-    """Locate `{stem}.jpg` (recombined image) under any staged image root (recursive, first match)."""
     for root in image_roots:
         hits = list(root.rglob(f"{stem}.jpg"))
         if hits:
@@ -245,7 +165,6 @@ def _find_image(image_roots: tuple[Path, ...], stem: str) -> Path | None:
 
 
 def _load_gray(path: Path) -> np.ndarray:
-    """Load a CESM JPG as a 2D float32 grayscale array (recombined channel is single-intensity)."""
     from PIL import Image
 
     with Image.open(path) as im:
@@ -255,11 +174,6 @@ def _load_gray(path: Path) -> np.ndarray:
 def _rasterize_polygons(
     polys: list[tuple[np.ndarray, np.ndarray]], shape: tuple[int, int], scale: float
 ) -> np.ndarray:
-    """Union polygon vertices into a uint8 ROI mask at the (possibly downscaled) image grid.
-
-    `scale` maps original-image pixel coords -> the downscaled grid (points are multiplied by scale).
-    Uses skimage.draw.polygon (row=y, col=x). Returns a mask with label 1 inside any lesion polygon.
-    """
     from skimage.draw import polygon as sk_polygon
 
     mask = np.zeros(shape, dtype=np.uint8)
@@ -273,7 +187,6 @@ def _rasterize_polygons(
 
 
 def _downscale(img: np.ndarray) -> tuple[np.ndarray, float]:
-    """Downscale so the long edge <= _MAX_LONG_EDGE; return (image, scale). No upscaling."""
     long_edge = max(img.shape)
     if long_edge <= _MAX_LONG_EDGE:
         return img, 1.0
@@ -286,21 +199,11 @@ def _downscale(img: np.ndarray) -> tuple[np.ndarray, float]:
     return out.astype(np.float32), scale
 
 
-# ==================================================================================================
-# Radiomics feature extraction (recombined channel, inside the lesion ROI).
-# ==================================================================================================
 def _extract_one(img: np.ndarray, mask: np.ndarray) -> dict[str, float]:
-    """PyRadiomics first-order + GLCM features of one 2D recombined image inside its ROI mask.
-
-    Uses SimpleITK 2D images + the shared extractor knob (binCount=32). Only first-order + GLCM are
-    enabled (the plan's floor spec) — shape features are geometry-only and add little for a
-    texture/enhancement phenotype. `diagnostics_` provenance keys are dropped. Returns a flat
-    {feature: value} dict; an empty dict signals extraction failure (too-small ROI, degenerate image).
-    """
     import SimpleITK as sitk
     from radiomics import featureextractor
 
-    if int(mask.sum()) < 16:  # ROI too small for a stable GLCM
+    if int(mask.sum()) < 16:  
         return {}
     sitk_img = sitk.GetImageFromArray(img.astype(np.float32))
     sitk_mask = sitk.GetImageFromArray(mask.astype(np.uint8))
@@ -310,7 +213,7 @@ def _extract_one(img: np.ndarray, mask: np.ndarray) -> dict[str, float]:
     extractor.enableFeatureClassByName("glcm")
     try:
         result = extractor.execute(sitk_img, sitk_mask)
-    except Exception:  # noqa: BLE001 — a single degenerate ROI must not abort the cohort extraction
+    except Exception:  
         return {}
     feats: dict[str, float] = {}
     for key, value in result.items():
@@ -326,13 +229,6 @@ def _extract_one(img: np.ndarray, mask: np.ndarray) -> dict[str, float]:
 def _build_feature_table(
     cfg: ArmConfig, paths: StagedPaths, cache_path: Path
 ) -> pd.DataFrame:
-    """Per-lesion-image radiomics feature table (recombined channel), joined to BI-RADS labels.
-
-    One row per CM image that has BOTH a parseable BI-RADS label AND >= 1 hand-drawn lesion polygon
-    AND an on-disk recombined JPG. Columns: patient_id, Image_name, birads_num, pathology, y, +
-    pyradiomics features. Cached to CSV so a re-run skips the (slow) extraction. The cache is keyed
-    only by Image_name; delete it to force re-extraction. CSV (not parquet) — no pyarrow dependency.
-    """
     if cache_path.exists():
         cached = pd.read_csv(cache_path)
         if len(cached) >= _MIN_LESIONS:
@@ -348,7 +244,7 @@ def _build_feature_table(
     for stem, polys in polygons.items():
         meta = label_by_name.get(stem)
         if meta is None:
-            continue  # segmented but no parseable BI-RADS label
+            continue  
         img_path = _find_image(paths.image_roots, stem)
         if img_path is None:
             n_no_image += 1
@@ -384,12 +280,8 @@ def _build_feature_table(
     return table
 
 
-# ==================================================================================================
-# Floor gate (patient-disjoint CV + shuffle sentinel + KILL/GREENLIGHT decision).
-# ==================================================================================================
 @dataclass
 class Arm1GateOutcome:
-    """Arm-1 floor-gate result + the KILL/GREENLIGHT decision (never a bare number)."""
 
     n_lesions: int
     n_patients: int
@@ -401,12 +293,11 @@ class Arm1GateOutcome:
     malignancy_auroc: float
     malignancy_ci95: tuple[float, float]
     malignancy_n: int
-    decision: str  # "KILL" | "GREENLIGHT" | "INDETERMINATE"
+    decision: str  
     rationale: str
 
 
 def _feature_columns(table: pd.DataFrame) -> list[str]:
-    """The pyradiomics feature columns (everything except the id/label metadata)."""
     meta = {"patient_id", "Image_name", "birads_num", "pathology", "y"}
     return [c for c in table.columns if c not in meta]
 
@@ -414,12 +305,6 @@ def _feature_columns(table: pd.DataFrame) -> list[str]:
 def _decide(
     result: FloorGateResult, cfg: ArmConfig, n_lesions: int, n_pos: int
 ) -> tuple[str, str]:
-    """Apply the pre-registered KILL (<=0.52) / GREENLIGHT (>=0.60 AND DeLong LB >= 0.52) gate.
-
-    Between the two thresholds (or a GREENLIGHT-level point estimate whose DeLong LB fails to clear
-    0.52) is INDETERMINATE — real-but-weak, neither killed nor greenlit. n_lesions / n_pos are surfaced
-    in the rationale to keep the sample context attached to the verdict.
-    """
     auroc = result.auroc
     lb = result.delong_ci95[0]
     kill = cfg.kill_threshold_auroc
@@ -451,44 +336,27 @@ def _decide(
 
 
 def run_arm1_floor_gate(cfg: ArmConfig, paths: StagedPaths, cache_path: Path) -> Arm1GateOutcome:
-    """Build the recombined-channel radiomics matrix and run the shared floor gate + shuffle sentinel.
-
-    (1) per-lesion radiomics on the CM channel inside the polygon ROI; (2) BI-RADS >= 4 label; (3) drop
-    non-finite feature columns + impute residual NaN with the column mean (unsupervised — no label
-    leakage); (4) HARD leakage gate on the columns; (5) shared harness run (elastic-net, PATIENT-
-    disjoint CV, config seeds); (6) SHUFFLE SENTINEL — permute the label, re-run identical CV, AUROC
-    must collapse to ~0.50; (7) a secondary Malignant-vs-Benign sensitivity read on the same features;
-    (8) KILL/GREENLIGHT decision on the primary BI-RADS result.
-    """
     table = _build_feature_table(cfg, paths, cache_path)
 
     feat_cols = _feature_columns(table)
     feats = table[feat_cols].apply(pd.to_numeric, errors="coerce")
-    # drop all-NaN / zero-variance feature columns, then impute residual NaN with the column mean
     feats = feats.dropna(axis=1, how="all")
     feats = feats.loc[:, feats.std(axis=0, skipna=True).fillna(0.0) > 0]
     feats = feats.fillna(feats.mean(axis=0))
 
-    # HARD leakage gate (LOCK-2): the feature columns must carry no forbidden IHC/subtype surrogate.
     assert_no_forbidden_inputs(feats.columns)
 
     x = feats.to_numpy(dtype=float)
     y = table["y"].to_numpy(dtype=int)
-    groups = table["patient_id"].to_numpy()  # patient-disjoint folding
+    groups = table["patient_id"].to_numpy()  
 
     result = run_floor_gate(x, y, groups, model="elasticnet", seeds=cfg.seeds)
 
-    # SHUFFLE SENTINEL (leakage-clean check, arm-4/arm-8 discipline): permute the label vs the feature
-    # rows and re-run the identical patient-disjoint multi-seed CV. Under the null the AUROC must
-    # collapse to ~0.50; a non-trivial shuffle AUROC would flag the real result as a leakage / ROI
-    # construction artifact rather than genuine recombined-channel -> BI-RADS signal.
     rng = np.random.default_rng(0)
     y_shuffled = y.copy()
     rng.shuffle(y_shuffled)
     shuffle_res = run_floor_gate(x, y_shuffled, groups, model="elasticnet", seeds=cfg.seeds)
 
-    # Secondary sensitivity: Malignant vs Benign (drop Normal / follow-up) on the SAME features — a
-    # path-confirmed read so the result is not fragile to the BI-RADS cutpoint alone.
     mal_mask = table["pathology"].isin(["malignant", "benign"]).to_numpy()
     mal_auroc, mal_ci = float("nan"), (float("nan"), float("nan"))
     mal_n = int(mal_mask.sum())
@@ -516,17 +384,7 @@ def run_arm1_floor_gate(cfg: ArmConfig, paths: StagedPaths, cache_path: Path) ->
     )
 
 
-# ==================================================================================================
-# Dedup check (CDD-CESM ∩ Duke = 0) — trivially TRUE by dataset design; logged explicitly.
-# ==================================================================================================
 def run_dedup_check() -> dict:
-    """Assert CDD-CESM ∩ Duke = 0 patients (LOCK-2). Trivially TRUE — different modality + collection.
-
-    CDD-CESM is 2D contrast-enhanced spectral MAMMOGRAPHY (Egypt, Khaled et al.); Duke is 3D breast
-    DCE-MRI. Different institutions, different modalities, different patient-ID namespaces (CDD-CESM
-    `P{n}` vs Duke `Breast_MRI_{n}`) — there is no shared-patient risk by construction. This function
-    records the finding; there is no cross-cohort join to de-duplicate.
-    """
     return {
         "check": "cdd_cesm_vs_duke",
         "shared_patients": 0,
@@ -538,9 +396,6 @@ def run_dedup_check() -> dict:
     }
 
 
-# ==================================================================================================
-# Reporting (markdown + JSON) — ledger-clean, provenance, dedup log, lesion-level framing.
-# ==================================================================================================
 def _ci_str(ci: tuple[float, float]) -> str:
     if not np.isfinite(ci[0]):
         return "[NaN, NaN]"
@@ -823,14 +678,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dedup_check and not args.floor_gate:
         dedup = run_dedup_check()
-        print(  # noqa: T201
+        print(  
             f"arm1 dedup-check ({dedup['check']}): {dedup['shared_patients']} shared patients "
             f"-> {dedup['status']}. {dedup['basis']}."
         )
         return 0 if dedup["status"] == "PASS" else 1
 
     if not args.floor_gate:
-        print(  # noqa: T201
+        print(  
             f"arm1: {_PURPOSE}. Pass --floor-gate to run the recombined-channel radiomics floor gate."
         )
         return 0
@@ -838,14 +693,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         paths = _resolve_staged(cfg, data_root)
     except FileNotFoundError as exc:
-        print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"BLOCKED: {exc}", file=sys.stderr)  
         return 2
 
     dedup = run_dedup_check()
     try:
         outcome = run_arm1_floor_gate(cfg, paths, Path(args.cache))
     except RuntimeError as exc:
-        print(f"BLOCKED: {exc}", file=sys.stderr)  # noqa: T201
+        print(f"BLOCKED: {exc}", file=sys.stderr)  
         return 2
 
     report_dir = Path(args.report_dir)
@@ -856,12 +711,11 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(_render_report(outcome, cfg, dedup))
     metrics_path.write_text(json.dumps(_metrics_payload(outcome, cfg, dedup), indent=2))
 
-    # Console summary (the runnable "every gate produces a number" contract).
     r = outcome.result
     auroc = "NaN" if not np.isfinite(r.auroc) else f"{r.auroc:.3f}"
     shuf = "NaN" if not np.isfinite(outcome.shuffle_auroc) else f"{outcome.shuffle_auroc:.3f}"
-    print(f"arm1 floor gate — report: {report_path}")  # noqa: T201
-    print(  # noqa: T201
+    print(f"arm1 floor gate — report: {report_path}")  
+    print(  
         f"  BI-RADS>=4: N={outcome.n_lesions} ({outcome.n_patients} pts) pos={outcome.n_pos} "
         f"AUROC={auroc} DeLongCI={_ci_str(r.delong_ci95)} ECE={r.ece:.3f} "
         f"shuffle={shuf} -> {outcome.decision}"

@@ -1,38 +1,26 @@
-# Arm 6 (Wave 1) — drug-response transfer stratifier (novel heads, OPSI 2026).
-#
-# Ledger (LOCK-1, critical): "resemblance-to-sensitive-cell-line-phenotype at diagnosis" EVERYWHERE.
-# NEVER "predicts who responds" / "treatment response predictor" (requires RCT/matched longitudinal
-# data, FORBIDDEN). Zero-shared-patient is trivially TRUE (DepMap is cell-line data) — log explicitly.
-#
-# STATUS: DRY STUB (populated: false). Dataset paths are placeholders; the execute agent stages
-# DepMap/PRISM + METABRIC/TCGA and flips populated -> true before the floor gate runs.
 
 schema: pinksight.novel-heads/arm6-v1
 arm: 6
 wave: 1
-role: drug-sensitivity-resemblance-characterisation   # at-diagnosis; NOT treatment prediction
+role: drug-sensitivity-resemblance-characterisation
 compute: cpu-zero-dollar
-model: lightgbm                             # cosine-similarity scores -> binary high/low resemblance
+model: lightgbm
 populated: false
 
-# --- Datasets (placeholders — Broad DepMap/PRISM + cBioPortal, public) -----------------------------
 datasets:
-  prism_drug_info: TBD/secondary_screen_drug_info.csv   # PRISM (Broad CC license)
-  ccle_expression: TBD/CCLE_expression.csv              # cell-line expression
-  tumor_expression: TBD/metabric_or_tcga_expression.csv  # cross-referenced tumour profiles
-drug_classes: [aromatase_inhibitor, taxane]  # named sensitivity phenotypes (resemblance targets)
+  prism_drug_info: TBD/secondary_screen_drug_info.csv
+  ccle_expression: TBD/CCLE_expression.csv
+  tumor_expression: TBD/metabric_or_tcga_expression.csv
+drug_classes: [aromatase_inhibitor, taxane]
 
-# --- Target ----------------------------------------------------------------------------------------
-target: sensitivity_resemblance             # binary high-resemblance vs low; subtype as enrichment-direction proxy
+target: sensitivity_resemblance
 
-# --- Thresholds (plan Wave 1 arm 6 spec) -----------------------------------------------------------
 seeds: [0, 1, 2]
-kill_threshold_auroc: 0.52                  # AUROC (subtype-direction enrichment) <= 0.52 -> uninformative
-greenlight_threshold_auroc: 0.60            # AUROC >= 0.60 + Fisher's exact p<0.05 concordance -> advance
+kill_threshold_auroc: 0.52
+greenlight_threshold_auroc: 0.60
 greenlight_concordance_p: 0.05
 
-# --- Zero-shared-patient (LOCK-2) ------------------------------------------------------------------
-zero_shared_patient: trivially_true         # DepMap = cell lines; no patients shared with any cohort
+zero_shared_patient: trivially_true
 
 ledger_guard: >
   resemblance-to-sensitive-cell-line-phenotype at diagnosis.

@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-"""consistency_lint — fail CI if a canonical fact drifts from decisions.md.
-
-decisions.md is the constitution; every other doc must agree with it. This guard:
-  (A) PRESENT — asserts each canonical value appears at least once in the active tree
-      (i.e. decisions.md still actually states it; a typo there would be caught).
-  (B) ABSENT  — asserts the known divergent variants do NOT appear anywhere active.
-
-Scope: `*.md` across the active tree, skipping build/vendor/history dirs and `archive/`.
-The ABSENT scan additionally exempts decisions.md (it references the superseded version in
-its append-log on purpose) and the P16 governance prompt (it quotes the divergent variants
-in order to forbid them). Run `--selfcheck` to verify the guard itself.
-"""
 
 from __future__ import annotations
 
@@ -29,23 +16,17 @@ SKIP_DIRS = {
     ".mypy_cache",
     "archive",
 }
-# ABSENT scan exempts these — they legitimately quote the old variants.
 ABSENT_EXEMPT = {"decisions.md", "P16_g0_governance_reconciliation.md", "consistency_lint.py"}
 
-# (A) Canonical values that MUST appear at least once (verbatim from decisions.md).
 CANONICAL_PRESENT = [
     ("leakage 6-set", "ER/PR/HER2/Ki-67/Mol-Subtype/Oncotype"),
-    ("baseline band", "0.74–0.84"),  # en dash
+    ("baseline band", "0.74–0.84"),  
     ("deadline", "19 Aug 2026"),
     ("pretest gate G6", "G6"),
     ("gate G4 retained", "G4"),
     ("LOCK-6 subtype tuple", "AUROC 0.75 / 0.80 / 0.85"),
 ]
 
-# (B) Divergent variants that MUST NOT appear (each: label, predicate(line)->bool).
-# The 4-set regex uses (?!/) so the canonical 6-set (…/Ki-67/Mol-Subtype/…) does NOT match.
-# The pretest check targets ONLY a pretest/usability line gated at G5/G6 — a real "G5–G6"
-# phase SPAN that also names external validation is a legitimate range, not drift.
 _RX_OLD_BAND = re.compile(r"0\.70[–-]0\.84")
 _RX_STALE_PTR = re.compile(r"~115 locked decisions")
 _RX_4SET = re.compile(
@@ -81,14 +62,12 @@ def check(root: str = ".") -> list[str]:
     texts = {f: f.read_text(encoding="utf-8", errors="replace") for f in files}
     problems: list[str] = []
 
-    # (A) PRESENT
     for label, needle in CANONICAL_PRESENT:
         if not any(needle in t for t in texts.values()):
             problems.append(
                 f"MISSING canonical [{label}]: expected '{needle}' somewhere in the active tree"
             )
 
-    # (B) ABSENT
     for f, t in texts.items():
         if f.name in ABSENT_EXEMPT:
             continue
@@ -103,7 +82,6 @@ def _selfcheck() -> None:
     import tempfile
 
     with tempfile.TemporaryDirectory() as d:
-        # A tree that satisfies every PRESENT and trips every ABSENT.
         canon = Path(d) / "decisions.md"
         canon.write_text(
             "ER/PR/HER2/Ki-67/Mol-Subtype/Oncotype\n"
@@ -115,7 +93,6 @@ def _selfcheck() -> None:
             "radiomics AUC 0.70–0.84 band\nclinical-usability pretest at G5/G6\n"
             "~115 locked decisions, v1 17 Jun\nER/PR/HER2/Ki-67 are NOT in inputs\n"
         )
-        # Legitimate lines that must NOT be flagged: the 6-set, and a real G5–G6 phase span.
         ok = Path(d) / "ok.md"
         ok.write_text(
             "exclude ER/PR/HER2/Ki-67/Mol-Subtype/Oncotype from inputs\n"
@@ -129,7 +106,6 @@ def _selfcheck() -> None:
             assert any(label in p for p in problems), (
                 f"selfcheck: failed to catch {label}: {problems}"
             )
-        # ok.md and decisions.md (canon) must not be flagged.
         assert not any(f"{ok}:" in p for p in problems), (
             f"selfcheck: false positive on ok.md: {problems}"
         )

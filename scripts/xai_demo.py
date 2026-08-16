@@ -1,7 +1,3 @@
-"""P10 demo: write reports/EXP-fixture/xai/scores.json (IoU, pointing, randomization, SHAP).
-
-  PYTHONPATH=src .venv/bin/python scripts/xai_demo.py
-"""
 
 import json
 import sys
@@ -12,21 +8,21 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
-from fixtures.synthetic import (  # noqa: E402
+from fixtures.synthetic import (  
     clinical_model_fixture,
     saliency_mask_fixture,
     tiny_cnn_fixture,
 )
 
-from pinksight.xai.faithfulness import box_hit, iou, pointing_game, randomization_test  # noqa: E402
-from pinksight.xai.saliency import clinical_shap, grad_cam_3d, randomize_weights  # noqa: E402
+from pinksight.xai.faithfulness import box_hit, iou, pointing_game, randomization_test  
+from pinksight.xai.saliency import clinical_shap, grad_cam_3d, randomize_weights  
 
 if __name__ == "__main__":
     fx = saliency_mask_fixture()
     model, layer, vol = tiny_cnn_fixture()
     cam = grad_cam_3d(model, vol, layer)
     rnd = randomize_weights(model, 1)
-    cam_rnd = grad_cam_3d(rnd, vol, rnd[2])  # hook the randomized model's OWN layer
+    cam_rnd = grad_cam_3d(rnd, vol, rnd[2])  
     clin = clinical_model_fixture()
     values, base = clinical_shap(clin["model"], clin["X"], clin["background"])
 
@@ -54,7 +50,7 @@ if __name__ == "__main__":
     out.mkdir(parents=True, exist_ok=True)
     (out / "scores.json").write_text(json.dumps(scores, indent=2, sort_keys=True) + "\n")
     np.save(out / "grad_cam_seed0.npy", cam)
-    print(f"wrote {out/'scores.json'} + grad_cam_seed0.npy")  # noqa: T201
-    print(f"IoU={scores['localisation_vs_independent_reference']['iou']}  "  # noqa: T201
+    print(f"wrote {out/'scores.json'} + grad_cam_seed0.npy")  
+    print(f"IoU={scores['localisation_vs_independent_reference']['iou']}  "  
           f"randomization drop={scores['randomization_sanity']['rel_drop']} "
           f"passed={scores['randomization_sanity']['passed']}")

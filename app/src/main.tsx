@@ -10,7 +10,6 @@ import Audit from "./routes/Audit";
 import Settings from "./routes/Settings";
 import "./index.css";
 
-// HashRouter: Tauri serves from a file:// origin where BrowserRouter breaks.
 const router = createHashRouter([
   {
     path: "/",

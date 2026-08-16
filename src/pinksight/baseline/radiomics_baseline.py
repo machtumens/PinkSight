@@ -1,20 +1,3 @@
-"""G1 radiomics baseline (LOCK-4 / [2.1]): PyRadiomics features -> classical classifier.
-
-The frozen comparison point every later model reports a delta against ([2.4]); the encoder's G2
-SUCCESS is *defined* as beating it ([3.16]). Two halves:
-
-  * feature extraction (GATED): PyRadiomics over each DCE phase inside the lesion ROI. pyradiomics
-    is not installed and the cohort imaging is absent, so `extract_features` raises rather than
-    fabricating features — wire it once the dep + imaging land.
-  * classifier + evaluation (sklearn, runs now): LogReg/RF with **patient-level**
-    StratifiedGroupKFold (LOCK-2 — a patient never spans train/test) -> AUROC mean + per-fold spread.
-
-Scope now: radiomics->subtype only. radiomics->Ki-67 ([2.1]) is deferred — the G0 audit found usable
-numeric Ki-67 N=0 (O-2), so there is no Ki-67 target to regress yet.
-
-ponytail: DeLong CI + ECE + multi-seed (the eval-integrity reporting rule) attach to the real
-headline number (Tier 2, when the cohort lands), not to this synthetic-testable harness.
-"""
 
 from __future__ import annotations
 
@@ -27,22 +10,21 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedGroupKFold
 
-from pinksight.metrics import delong_ci, ece  # pure-numpy; never-a-bare-number reporting (docs/CLAIM_LEDGER.md)
+from pinksight.metrics import delong_ci, ece  
 
 _CLASSIFIERS = {
     "logreg": lambda: LogisticRegression(max_iter=1000),
     "rf": lambda: RandomForestClassifier(n_estimators=300, random_state=0),
 }
-SEEDS = (0, 1, 2)  # eval-integrity minimum (docs/CLAIM_LEDGER.md "multi-seed spread 3 min / 5 target")
+SEEDS = (0, 1, 2)  
 N_SPLITS = 5
 
 
 class FeaturesNotProvisioned(RuntimeError):
-    """Radiomics extraction requested but pyradiomics/imaging is not provisioned (G1 blocker)."""
+    pass
 
 
 def make_classifier(kind: str = "logreg") -> ClassifierMixin:
-    """Build a frozen-config classical classifier for the baseline ([2.1] LogReg/RF)."""
     if kind not in _CLASSIFIERS:
         raise ValueError(f"kind must be one of {sorted(_CLASSIFIERS)}, got {kind}")
     return _CLASSIFIERS[kind]()
@@ -55,11 +37,6 @@ def cross_val_auroc(
     kind: str = "logreg",
     n_splits: int = 5,
 ) -> tuple[float, list[float]]:
-    """Patient-grouped, class-stratified CV AUROC for radiomics->subtype (LOCK-2 + LOCK-4).
-
-    `groups` is the patient id per row, so no patient spans train and test (patient-level splits
-    only). Returns (mean_auroc, per_fold_aurocs).
-    """
     X = np.asarray(X, dtype=float)
     y = np.asarray(y)
     groups = np.asarray(groups)
@@ -77,7 +54,6 @@ def cross_val_auroc(
 
 
 def _pipeline(kind: str):
-    """Classifier with TRAIN-only median-impute + standardize (LOCK-2 — fit inside each fold)."""
     from sklearn.impute import SimpleImputer
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
@@ -93,11 +69,6 @@ def cross_val_metrics(
     n_splits: int = N_SPLITS,
     seeds: tuple[int, ...] = SEEDS,
 ) -> dict:
-    """Multi-seed patient-grouped CV -> never-a-bare-number metrics dict (mirrors the P05 schema).
-
-    Per seed: 5-fold StratifiedGroupKFold (patient-disjoint, LOCK-2), pooled out-of-fold preds ->
-    AUROC + DeLong 95% CI + ECE. Reports mean/std across seeds. Impute+standardize fit train-only.
-    """
     X = np.asarray(X, dtype=float)
     yv = np.asarray(list(y))
     groups = np.asarray(groups)
@@ -149,14 +120,9 @@ def extract_features(
     phase_names: Sequence[str] | None = None,
     settings: dict | None = None,
 ) -> dict[str, float]:
-    """PyRadiomics features per DCE phase inside the lesion ROI -> flat {phase_feature: value} dict.
-
-    GATED: pyradiomics is not installed and the imaging cohort is absent. Raises rather than
-    returning fabricated features. Real extraction runs once both land (Tier 2).
-    """
     try:
         from radiomics import featureextractor
-    except ImportError as e:  # pragma: no cover - exercised only without the dep
+    except ImportError as e:  
         raise FeaturesNotProvisioned(
             "pyradiomics not installed and Duke imaging absent. Add pyradiomics to deps and provide "
             "the cohort before extracting baseline features — do not fabricate."
@@ -174,6 +140,6 @@ def extract_features(
     for name, channel in zip(names, vol, strict=True):
         img = sitk.GetImageFromArray(channel.astype(np.float32))
         for key, value in extractor.execute(img, label).items():
-            if not key.startswith("diagnostics_"):  # drop provenance entries
+            if not key.startswith("diagnostics_"):  
                 feats[f"{name}_{key}"] = float(value)
     return feats

@@ -1,30 +1,3 @@
-#!/usr/bin/env python3
-"""G5 LEG-2 — calibration of the clinical-subtype model + ISPY2 external ($0, CPU).
-
-ESTIMATOR (G5 re-run 25-07-26): the H6 COALITION LogReg (the 0.708 clinical-subtype headline
-estimator), NOT the FT-Transformer. The clinical OOF comes from clinical_encoder.logreg_oof and the
-ISPY2 external probs from the LogReg re-run (g5_external_eval). The prior calibration leg calibrated
-the FTT logits — apples-to-oranges under a LogReg headline. Temperature scaling operates on logit(p)
-= inverse-sigmoid of the LogReg predict_proba output (a valid post-hoc scalar over any probability
-vector); LOCK-2/E4 unchanged (T fit on Duke OOF / val-equivalent ONLY).
-
-WHAT: reliability diagram + ECE (pre/post temperature scaling) for (a) the clinical-alone headline
-(the Duke LogReg's per-patient out-of-fold probabilities) and (b) the ISPY2 external predictions.
-Closes the G3 known-gap by SAVING per-patient OOF probabilities to disk this time
-(reports/G5_calibration/oof_probs.npy) so a temperature-scaled ECE is recoverable.
-
-TEMPERATURE SCALING (E4 / LOCK-2): T is fit on the VAL fold of configs/split_v2.yaml ONLY — never on
-the reported test fold or the external cohort. split_v2 has no separate `val` list (only dev/test);
-the leakage-safe val-equivalent is the CROSS-VALIDATION HELD-OUT (out-of-fold) predictions: each dev
-patient is scored by a model that never trained on that patient, so the pooled-OOF predictions ARE
-held-out ("validation") predictions. T is fit on those OOF predictions and then applied — never fit
-on test/external. Reuses pinksight.eval.calibration (fit_temperature/apply_temperature/reliability).
-
-COMPUTE: CPU only, $0. No GPU / RunPod / Kaggle (LOCK-5). No FORBIDDEN_FEATURES enter anything —
-temperature scaling is a post-hoc scalar over existing logits and adds no features (LOCK-2).
-
-Run:  uv run python scripts/g5_calibration.py
-"""
 from __future__ import annotations
 
 import json
@@ -36,17 +9,17 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from pinksight.eval.calibration import (  # noqa: E402
+from pinksight.eval.calibration import (  
     apply_temperature,
     fit_temperature,
     reliability_curve,
     smooth_ece,
 )
-from pinksight.metrics import ece  # noqa: E402
-from pinksight.models import clinical_encoder as ce  # noqa: E402
+from pinksight.metrics import ece  
+from pinksight.models import clinical_encoder as ce  
 
 OUT_DIR = ROOT / "reports" / "G5_calibration"
-OOF_PROBS_NPY = OUT_DIR / "oof_probs.npy"       # L2-C9: the G3 known-gap closer
+OOF_PROBS_NPY = OUT_DIR / "oof_probs.npy"       
 RELIABILITY_PNG = OUT_DIR / "reliability.png"
 RESULTS_JSON = OUT_DIR / "metrics.json"
 
@@ -54,29 +27,18 @@ _EPS = 1e-6
 
 
 def _logit(p: np.ndarray) -> np.ndarray:
-    """Exact inverse-sigmoid: OOF/external probs come from sigmoid(logits), so logit(p) recovers the
-    logit temperature scaling operates on (clip to avoid ±inf at 0/1)."""
     p = np.clip(np.asarray(p, float), _EPS, 1.0 - _EPS)
     return np.log(p / (1.0 - p))
 
 
 def clinical_oof_probs(clin_path: Path, split_yaml: Path):
-    """Per-patient pooled-OOF probabilities for the Duke clinical model (seed 0 — deterministic).
-
-    ESTIMATOR (G5 re-run 25-07-26): the H6 COALITION LogReg (clinical_encoder.logreg_oof) — the
-    ablation-ladder estimator behind the 0.708 clinical-subtype headline, NOT the FT-Transformer. The
-    prior calibration leg used the FTT OOF (via ce._fit_eval_fold); calibrating the FTT logits under a
-    LogReg headline was apples-to-oranges. logreg_oof runs the SAME patient-grouped StratifiedGroupKFold(5)
-    (each dev patient scored by a model that never trained on them — the val-equivalent). Returns
-    (pids, y, oof)."""
     x_num, x_cat, y, groups, cards = ce.load_xy(clin_path, split_yaml)
-    seed = 0  # deterministic single-seed OOF for the headline calibration curve
+    seed = 0  
     oof = ce.logreg_oof(x_num, x_cat, y, groups, cards, seed)
     return [str(g) for g in groups], np.asarray(list(y), int), oof
 
 
 def _cal_block(y, prob, temperature) -> dict:
-    """ECE (binned + SmoothECE) + reliability rows for a prob vector, before and after applying T."""
     p_after = apply_temperature(_logit(prob), temperature)
     return {
         "n": int(len(y)),
@@ -91,13 +53,12 @@ def _cal_block(y, prob, temperature) -> dict:
 
 
 def _plot(clin_block, ext_block, temperature) -> bool:
-    """Reliability diagram (clinical-alone + ISPY2, pre/post temp). Returns False if matplotlib absent."""
     try:
         import matplotlib
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-    except Exception:  # pragma: no cover
+    except Exception:  
         return False
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
@@ -135,27 +96,21 @@ def _plot(clin_block, ext_block, temperature) -> bool:
 def run() -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1) Clinical-alone per-patient OOF probs (headline). Save to disk — closes the G3 known-gap (L2-C9).
     pids, y_clin, oof = clinical_oof_probs(
         ROOT / "data/raw/Clinical_and_Other_Features.xlsx", ROOT / "configs/split_v2.yaml"
     )
     np.save(OOF_PROBS_NPY, oof)
-    # also persist labels + pids alongside for a fully reproducible calibration re-run
     np.savez(OUT_DIR / "oof_probs_full.npz", pids=np.array(pids, dtype=object), y=y_clin, oof=oof)
 
-    # 2) Fit temperature on the OOF (val-equivalent) logits ONLY (E4 — never test/external).
     temperature = fit_temperature(_logit(oof), y_clin.astype(float))
 
     clin_block = _cal_block(y_clin, oof, temperature)
 
-    # 3) ISPY2 external calibration: load the external probs written by g5_external_eval (seed 0),
-    #    apply the SAME T fit on Duke OOF (never re-fit on external — LOCK-2).
     ext_block = None
     ext_npz = ROOT / "reports/G5_external/ispy2_external_probs.npz"
     if ext_npz.exists():
         d = np.load(ext_npz, allow_pickle=True)
         y_ext = np.asarray(d["y"], int)
-        # seed-0 external probs (present as probs_seed0)
         key = "probs_seed0" if "probs_seed0" in d.files else next(k for k in d.files if k.startswith("probs_seed"))
         p_ext = np.asarray(d[key], float)
         ext_block = _cal_block(y_ext, p_ext, temperature)
@@ -188,10 +143,10 @@ def run() -> dict:
 
 def main() -> int:
     if not (ROOT / "data/raw/Clinical_and_Other_Features.xlsx").exists():
-        print("[g5-calibration] AWAITING DATA — data/raw/ clinical table not present (gitignored).")  # noqa: T201
+        print("[g5-calibration] AWAITING DATA — data/raw/ clinical table not present (gitignored).")  
         return 0
     out = run()
-    print(json.dumps(out, indent=2))  # noqa: T201
+    print(json.dumps(out, indent=2))  
     return 0
 
 

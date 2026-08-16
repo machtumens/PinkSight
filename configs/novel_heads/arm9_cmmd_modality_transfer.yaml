@@ -1,51 +1,29 @@
-# Arm 9 (Wave 2) — CMMD modality-transfer null test (novel heads, OPSI 2026).
-#
-# Ledger (LOCK-1, YELLOW — framing critical): "independent modality null-replication on CMMD FFDM.
-# Results do NOT imply the Duke model generalises to CMMD. Cross-institution generalisation remains
-# FORBIDDEN." The Duke model is NEVER applied to CMMD — a fresh floor is trained on CMMD ONLY. Any
-# model trained on CMMD + applied to Duke needs a NEW ADR (LOCK-1 amendment).
-#
-# The report-write step MUST run validate_arm_report_keywords(report_text, "arm9") (exit 1 on
-# "generalises to"/"Duke model"/"transfers to Duke"/"cross-institution"; requires "independent null
-# replication") before writing to disk.
-#
-# STATUS: POPULATED (populated: true). CMMD (TCIA) staged to data/cmmd/ (gitignored) by the arm-9
-# script `--stage` step; the LumA-vs-TNBC floor gate ran on 152 Luminal A + 86 triple-negative
-# patients (238 total, patient-disjoint CV). Radiomics is elastic-net on a whole-breast Otsu mask
-# (mirrors arm 6 / arm 10 — the nominal `model: lightgbm` field is superseded; LightGBM is an
-# undeclared dependency, scikit-learn is declared). See the arm-9 report `## Data provenance`.
 
 schema: pinksight.novel-heads/arm9-v1
 arm: 9
 wave: 2
-role: independent-null-replication          # imaging->subtype on a different modality/cohort
+role: independent-null-replication
 compute: cpu-zero-dollar
-model: lightgbm                             # NOMINAL — actual floor model is elastic-net (see header)
+model: lightgbm
 populated: true
 
-# --- Dataset (TCIA CMMD, 749 subtype-labelled patients, FFDM; staged to data/cmmd/, gitignored) ----
 datasets:
-  cmmd_root: data/cmmd                       # full-field digital mammography (FFDM), NOT DCE-MRI
-  clinical_xlsx: data/cmmd/CMMD_clinicaldata_revision.xlsx   # per-patient subtype + affected LeftRight
-  images_dir: data/cmmd/images               # <PatientID>/*.dcm (MG series; affected-side filtered)
-  tcia_collection: CMMD                       # public NBIA REST (getSeries + getImage; no auth)
+  cmmd_root: data/cmmd
+  clinical_xlsx: data/cmmd/CMMD_clinicaldata_revision.xlsx
+  images_dir: data/cmmd/images
+  tcia_collection: CMMD
   license: "CC BY-NC 3.0"
 
-# --- Target ----------------------------------------------------------------------------------------
-target: luma_vs_tnbc                         # CMMD-internal split only (never a cross-cohort transfer)
+target: luma_vs_tnbc
 
-# --- Thresholds (plan Wave 2 arm 9 spec — BOTH outcomes are informative) ---------------------------
 seeds: [0, 1, 2]
-# KILL here is a POSITIVE science outcome: null replicates the G3 imaging finding on FFDM.
-kill_threshold_auroc: 0.52                  # AUROC <= 0.52 -> "imaging->subtype null replicates on FFDM/CMMD"
-greenlight_threshold_auroc: 0.62            # AUROC >= 0.62 (CMMD-internal) -> "unexpected FFDM signal, NEW HYPOTHESIS only"
-greenlight_note: new_hypothesis_not_cross_institution   # requires a new ADR before any follow-up
+kill_threshold_auroc: 0.52
+greenlight_threshold_auroc: 0.62
+greenlight_note: new_hypothesis_not_cross_institution
 
-# --- Dedup (LOCK-2) --------------------------------------------------------------------------------
-dedup_check: cmmd_vs_duke                    # CMMD ∩ Duke = 0 (separate TCIA collection; FFDM vs DCE-MRI)
+dedup_check: cmmd_vs_duke
 
-# --- Wording guard (enforced programmatically at report-write) -------------------------------------
-report_keyword_guard_arm_id: arm9           # -> wave1_eval_harness.validate_arm_report_keywords
+report_keyword_guard_arm_id: arm9
 
 ledger_guard: >
   independent modality null-replication on CMMD FFDM. Results do not imply the Duke model generalises

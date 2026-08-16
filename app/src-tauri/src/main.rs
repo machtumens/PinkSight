@@ -1,11 +1,5 @@
-// Prevents an extra console window on Windows in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Minimal Tauri v2 shell. The UI is React; heavy inference is a Python sidecar (see ../sidecar).
-// In dev the sidecar is auto-spawned below via a plain std::process::Command (python3 -> python
-// fallback), health-probed first to avoid double-launching one, and killed on app exit. If spawn
-// fails, the app still loads and the frontend's existing offline -> mock fallback applies — never a
-// hard crash. Packaging a bundled sidecar binary via tauri_plugin_shell is a separate follow-on.
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
@@ -17,12 +11,8 @@ use tauri::Manager;
 
 const SIDECAR_ADDR: &str = "127.0.0.1:8756";
 
-// Tracks the auto-spawned sidecar child so it can be killed on app exit. None when a sidecar was
-// already running (reused) or when spawn failed.
 struct SidecarState(Mutex<Option<Child>>);
 
-// Probe GET /health over a raw TCP socket (no HTTP crate — LOCKED decision 4 forbids a Cargo change).
-// Returns true iff a 200 response comes back within the connect/read timeouts; any error -> false.
 fn probe_health() -> bool {
     let addr = match SIDECAR_ADDR.parse() {
         Ok(a) => a,
@@ -51,18 +41,14 @@ fn probe_health() -> bool {
     head.starts_with("HTTP/1.1 200") || head.starts_with("HTTP/1.0 200")
 }
 
-// Spawn the Python sidecar if one is not already healthy. Reuses a running sidecar (returns None, no
-// double-launch). The spawn argv ("main.py") and working dir are COMPILE-TIME CONSTANTS — no
-// runtime/request-derived string ever reaches Command (LOCKED decision 4). Returns None if both
-// interpreters fail (AC10: the app must still load and fall back to offline -> mock).
 fn spawn_sidecar_if_needed() -> Option<Child> {
     if probe_health() {
-        return None; // already running — reuse, never double-launch
+        return None;
     }
     let sidecar_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("sidecar");
     for interpreter in ["python3", "python"] {
         match Command::new(interpreter)
-            .arg("main.py") // fixed literal — never interpolated
+            .arg("main.py")
             .current_dir(&sidecar_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())

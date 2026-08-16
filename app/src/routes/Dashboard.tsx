@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 const SIDECAR = "http://127.0.0.1:8756";
 type Health = "checking" | "online" | "offline";
 
-// Poll the sidecar's /health so the Dashboard shows a live status dot, not static instructions.
 function useSidecarHealth(): Health {
   const [health, setHealth] = useState<Health>("checking");
   useEffect(() => {
@@ -28,7 +27,6 @@ function useSidecarHealth(): Health {
   return health;
 }
 
-// Dashboard = honest status of the model + workstation, not a metrics vanity wall.
 export default function Dashboard() {
   const health = useSidecarHealth();
   const dot =

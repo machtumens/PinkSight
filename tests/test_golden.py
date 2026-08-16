@@ -1,19 +1,3 @@
-"""Golden-output test (manual §10.2 testing pyramid): re-run the P03 preprocessing chain on a
-fixed case and assert it matches a stored hash, so a silent change to N4 / resample / Nyul / crop
-fails CI loudly.
-
-The hash is pinned to the chain + the frozen Nyul landmarks (configs/nyul_standard_v1.npy, fit on
-the FULL dev split — 613 patients, LOCK-2 train-only, via scripts/fit_nyul_dev.py) +
-SimpleITK 2.5.5 / intensity-normalization 3.0.1. Regenerate with:
-    uv run python scripts/build_golden_fixture.py   # prints the new GOLDEN_SHA256
-data/ is gitignored, so this skips on a fresh clone (like the real-manifest split checks).
-
-Golden regenerated 2026-07-09: commit ff41271 (2026-06-29) intentionally refit the Nyul landmarks
-from the earlier degenerate 2-patient fixture to the full 613-patient dev split and rewrote series
-classification in phase_stack.py — both legitimately changed the deterministic preprocessing output.
-Verified deterministic (hash stable across repeated builds), no dependency drift. See the
-[P03-GOLDEN] entry in decisions.md.
-"""
 
 from pathlib import Path
 
@@ -37,8 +21,8 @@ def test_preprocessing_golden_output():
     from pinksight.data.preprocess import golden_digest, preprocess_patient
 
     nyul = NyulNormalizer()
-    nyul.load_standard_histogram(str(_LANDMARKS))  # frozen landmarks, not a re-fit
+    nyul.load_standard_histogram(str(_LANDMARKS))  
     out = preprocess_patient(_FIXTURE, load_boxes()[FIXED_CASE], nyul)
 
-    assert out.shape == (4, 73, 46, 62)  # pre + 3 post phases as channels, ROI+margin crop
+    assert out.shape == (4, 73, 46, 62)  
     assert golden_digest(out) == GOLDEN_SHA256, "preprocessing output drifted from the golden hash"

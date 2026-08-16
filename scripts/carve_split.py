@@ -1,32 +1,3 @@
-#!/usr/bin/env python3
-"""Carve the quasi-external (scanner-based) holdout — BEFORE any imaging is on disk.
-
-This is the LOCK-2 "carve the test set FIRST" step. Because the split is decided purely
-on metadata (clinical subtype + per-scan scanner), it is impossible to have peeked at the
-test images — they do not exist locally yet. That is the strongest form of the rule.
-
-Axis: SCANNER only — the one quasi-external shift axis Duke's metadata actually supports:
-  - acquisition-year: unusable. StudyDate is uniformly de-identified (1990-01-01) and SeriesDate
-    has only ~7 distinct values (mostly de-id'd; the few real 2022 dates are a confounded
-    release batch). Not a usable year-shift axis.
-  - field-strength: no such column exists in the scanner metadata.
-This NARROWS decisions.md [1.10] (LOCKED: scanner/field-strength/year) to scanner-only. It is a
-data-forced constraint, not a preference — FLAGGED for ratification against [1.10] (see JOURNAL).
-
-Scope (LOCK-3 / O-2): Mol Subtype 0 = luminal-like, 3 = TNBC; codes 1,2 dropped.
-
-Outputs:
-  data/manifest_v1.csv   — patient_id, scanner, subtype, split
-  configs/split_v2.yaml  — frozen split (test = held-out scanner; dev = 5-fold CV pool)
-
-Usage:
-    uv run python scripts/carve_split.py                      # default holdout: Avanto
-    uv run python scripts/carve_split.py --holdout Avanto Skyra
-    uv run python scripts/carve_split.py --selfcheck          # synthetic, no data
-
-ponytail: scanner-holdout is deterministic (whole scanners move) — no RNG needed for the
-carve itself; the seed is recorded only for the downstream 5-fold CV.
-"""
 
 from __future__ import annotations
 
@@ -39,13 +10,12 @@ import pandas as pd
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
-from audit_ki67 import load as load_clinical_raw  # reuse the 3-row-header resolver
+from audit_ki67 import load as load_clinical_raw  
 
-# LOCK-3 / O-2 subtype scope. Duke "Mol Subtype": 0=luminal-like, 1/2=HER2-ish, 3=TNBC.
 SUBTYPE_MAP = {0: "luminal_like", 3: "tnbc"}
 TNBC = "tnbc"
 DEFAULT_HOLDOUT = ["Avanto"]
-TNBC_PREV_TOLERANCE = 0.05  # warn if holdout TNBC prevalence drifts > 5pp from overall
+TNBC_PREV_TOLERANCE = 0.05  
 
 
 def sha256(path: Path) -> str:
@@ -53,7 +23,6 @@ def sha256(path: Path) -> str:
 
 
 def clinical_subtypes(path: Path) -> pd.DataFrame:
-    """patient_id -> subtype, restricted to the in-scope contrast (luminal-like vs TNBC)."""
     df = load_clinical_raw(path)
     out = pd.DataFrame(
         {
@@ -65,12 +34,8 @@ def clinical_subtypes(path: Path) -> pd.DataFrame:
 
 
 def patient_scanner(path: Path) -> pd.DataFrame:
-    """patient_id -> dominant (mode) scanner across that patient's series."""
     m = pd.read_csv(path, dtype=str)
     m["scanner"] = m["ManufacturerModelName"].astype(str).str.strip()
-    # ponytail: drop tooling junk leaked into ManufacturerModelName (a dcmqi git URL, 127 series).
-    # Zero in-scope patients have it as their dominant scanner today, so this changes no current
-    # label — it just makes the per-patient mode correct-by-construction instead of by luck.
     m = m[~m["scanner"].str.startswith("git@")]
     mode = m.groupby("PatientID")["scanner"].agg(lambda s: s.value_counts().index[0])
     multi = int((m.groupby("PatientID")["scanner"].nunique() > 1).sum())
@@ -80,14 +45,12 @@ def patient_scanner(path: Path) -> pd.DataFrame:
 
 
 def build_manifest(clinical: pd.DataFrame, scanners: pd.DataFrame) -> pd.DataFrame:
-    """Inner join: in-scope patients that also have imaging metadata."""
     man = clinical.merge(scanners, on="patient_id", how="inner")
     man.attrs["multi_scanner_patients"] = scanners.attrs.get("multi_scanner_patients", 0)
     return man.sort_values("patient_id").reset_index(drop=True)
 
 
 def scanner_table(man: pd.DataFrame) -> pd.DataFrame:
-    """Per-scanner counts + TNBC prevalence (in-scope patients only)."""
     g = man.assign(is_tnbc=man.subtype.eq(TNBC)).groupby("scanner")
     t = g.agg(n=("patient_id", "size"), tnbc=("is_tnbc", "sum"))
     t["luminal_like"] = t.n - t.tnbc
@@ -120,7 +83,7 @@ def freeze(man: pd.DataFrame, holdout: list[str], clin_path: Path, scan_path: Pa
     drift = abs(test_bal["tnbc_prev"] - overall_prev)
     return {
         "schema": "pinksight.split/v2",
-        "axis": "scanner",  # year + field-strength axes unavailable in Duke metadata; narrows [1.10] (flagged)
+        "axis": "scanner",  
         "seed": seed,
         "holdout_scanners": holdout,
         "subtype_scope": {"luminal_like": "Mol Subtype == 0", "tnbc": "Mol Subtype == 3",
@@ -169,7 +132,6 @@ def selfcheck() -> int:
     man = carve(build_manifest(clin, scan), ["B"])
     assert sorted(man.loc[man.split == "test", "patient_id"]) == ["p3", "p4"], man
     assert sorted(man.loc[man.split == "dev", "patient_id"]) == ["p1", "p2"], man
-    # disjointness (LOCK-2)
     test, dev = set(man[man.split == "test"].patient_id), set(man[man.split == "dev"].patient_id)
     assert not (test & dev), "patient leaked across splits"
     t = scanner_table(man)

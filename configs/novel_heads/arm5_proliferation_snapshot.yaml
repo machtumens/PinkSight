@@ -1,53 +1,30 @@
-# Arm 5 (Wave 3, GATED + ADR-BLOCKED) — proliferation-snapshot head (TUPAC16).
-#
-# Ledger (LOCK-1, YELLOW wording): target = PAM50 proliferation INDEX, a gene-expression SNAPSHOT at
-# diagnosis. NEVER mitotic rate / growth rate / doubling time / kinetics / proliferation rate. Use
-# "proliferation index characterisation" or "Ki-67 surrogate index at diagnosis". The TUPAC16
-# MITOTIC-COUNT task is EXCLUDED — only the PAM50-proliferation-score target is admissible.
-#
-# BLOCKED: arm 5 requires a ratified TUPAC16 ADR in docs/adr/ before any training AND Wave 3 unlock.
-# The report-write step MUST run validate_arm_report_keywords(report_text, "arm5") (exit 1 on any
-# forbidden term) before writing to disk.
-#
-# STATUS: POPULATED 2026-07-28 (Wave 3 Phase 2, CPU-only session). ADR-0014 drafted (PROPOSED, PI
-# sign-off pending) — it names PAM50 proliferation score as the target and rejects the TUPAC16
-# mitotic-count task by name. GPU embed pass (Phase 8) OUT OF SCOPE until Gate 2 is granted.
 
 schema: pinksight.novel-heads/arm5-v1
 arm: 5
 wave: 3
-role: proliferation-index-characterisation   # at-diagnosis SNAPSHOT, not kinetics
-compute: cpu-floor-then-gpu-embed             # floor gate CPU; embed pass ~$10-15 RunPod on GREENLIGHT
-model: ridge_on_embeddings                    # slide-level regression on frozen UNI embeddings
+role: proliferation-index-characterisation
+compute: cpu-floor-then-gpu-embed
+model: ridge_on_embeddings
 populated: true
-gated_behind: wave1_or_wave2_greenlight       # SATISFIED 2026-07-28: arms 1/2/4/8 GREENLIGHT
-adr_required: docs/adr/0014-arm5-tupac16-proliferation-index.md   # PROPOSED 2026-07-28; PI sign-off pending
+gated_behind: wave1_or_wave2_greenlight
+adr_required: docs/adr/0014-arm5-tupac16-proliferation-index.md
 
-# --- Forbidden task (ADR-0014 §Forbidden task) -----------------------------------------------------
-# The TUPAC16 PRIMARY mitotic-count / mitosis-detection task is EXCLUDED BY NAME. A mitotic count is a
-# division-frequency (rate-like) readout and therefore kinetics-adjacent — LOCK-1 FORBIDDEN. It may not
-# be a target, auxiliary target, input feature, or reported comparison number.
 forbidden_task: tupac16_mitotic_count
 forbidden_task_aliases: [mitosis_detection, mitotic_score, mitotic_count_per_hpf]
 
-# --- Dataset (placeholder — TUPAC16 challenge, TCIA-linked) ----------------------------------------
 datasets:
-  tupac16_wsi: TBD/TUPAC16                   # 500 train + 321 test WSI
-  pam50_proliferation_scores: TBD/tupac16_pam50_proliferation.tsv   # the ONLY admissible target
+  tupac16_wsi: TBD/TUPAC16
+  pam50_proliferation_scores: TBD/tupac16_pam50_proliferation.tsv
 
-# --- Track-B embedding entrypoint (verified at Wave 3 entry — never hardcode) -----------------------
 trackb_entrypoint_config: configs/novel_heads/trackb_entrypoint.yaml
 
-# --- Target ----------------------------------------------------------------------------------------
-target: pam50_proliferation_score           # continuous molecular index; NOT mitotic count
+target: pam50_proliferation_score
 
-# --- Thresholds (plan Wave 3 arm 5 floor spec — Pearson r for the regression target) ---------------
 seeds: [0, 1, 2]
-kill_threshold_pearson_r_abs: 0.20          # |r| <= 0.20 -> terminate WITHOUT GPU spend
-greenlight_threshold_pearson_r_abs: 0.35    # |r| >= 0.35 -> authorise GPU embed pass
+kill_threshold_pearson_r_abs: 0.20
+greenlight_threshold_pearson_r_abs: 0.35
 
-# --- Wording guard (enforced programmatically at report-write) -------------------------------------
-report_keyword_guard_arm_id: arm5           # -> wave1_eval_harness.validate_arm_report_keywords
+report_keyword_guard_arm_id: arm5
 
 ledger_guard: >
   PAM50 proliferation-index characterisation from WSI at diagnosis (TUPAC16).

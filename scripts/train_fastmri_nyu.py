@@ -1,16 +1,3 @@
-"""fastMRI-NYU STANDALONE encoder training (ADR-0016, RATIFIED) — H-char + H5, NYU-INTERNAL only.
-
-NYU-ONLY. No Duke data, no Duke gradient. Reports NYU-internal AUROC + DeLong CI + ECE + shuffle
-sentinel + >=3 seeds (H-char) and MAE + bootstrap CI (H5 chronological age). Go/no-go binds the DeLong
-LOWER BOUND (characterisation min met only if lower bound > 0.60; n=50 test / 18 positive => wide CI).
-NEVER juxtaposes an NYU number with a Duke number.
-
-Claim guards asserted at runtime (ADR-0016): normals-quarantine absent from every batch, patient-disjoint
-shipped 240/60 split, images-only encoder inputs.
-
-    PYTHONPATH=src .venv/bin/python scripts/train_fastmri_nyu.py --smoke       # overfit probe (BN-alive)
-    PYTHONPATH=src .venv/bin/python scripts/train_fastmri_nyu.py               # full 3-seed H-char + H5
-"""
 
 from __future__ import annotations
 
@@ -43,19 +30,16 @@ from pinksight.seed import set_seed
 from pinksight.train.loop import TrainCfg, train_model
 
 PROC = Path("data/fastmri_processed_nyu")
-# [lesion-crop plan] --crop-mode/--mask-dir/--proc-dir reassign these module globals in main() (the
-# existing PROC-as-global idiom, read by _loader + _cached). Defaults preserve R0-R3 byte-for-byte:
-# CROP_MODE="none" makes crop_size/mask_dir inert inside NpyVolumeDataset (the resize branch runs).
 MASK_DIR = Path("data/fastmri_processed_nyu_masks")
 CROP_MODE = "none"
 TASK = Path("process/general-plans/active/fastmri-encoder-deferred-fusion_04-08-26")
 OUT = TASK / "fastmri_nyu_results.json"
-CHAR_MIN_AUROC = 0.75           # characterisation min target
-GO_NOGO_LB = 0.60               # go/no-go binds the DeLong LOWER BOUND > 0.60 (red-team Fix #5)
+CHAR_MIN_AUROC = 0.75           
+GO_NOGO_LB = 0.60               
 
 
 def log(m: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)  # noqa: T201
+    print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)  
 
 
 def _device(choice: str) -> str:
@@ -63,14 +47,10 @@ def _device(choice: str) -> str:
 
 
 def _cached(items: list[tuple[str, float]]) -> list[tuple[str, float]]:
-    """Keep only items whose processed cube exists on disk (resumable / partial-preprocess safe)."""
     return [(p, y) for p, y in items if (PROC / f"{p}.npy").exists()]
 
 
 def _loader(items, channels, spatial, batch, augment, shuffle) -> DataLoader:
-    # crop_mode/crop_size/mask_dir are inert when CROP_MODE=="none" (dataset takes the resize branch),
-    # so a no-flag run is byte-identical to R0-R3. In "lesion" mode the dataset derives the tight
-    # heuristic-mask box and resamples to crop_size^3 (== --spatial), so the fixed grid is unchanged.
     ds = NpyVolumeDataset(items, proc_dir=PROC, channels=channels,
                           spatial_size=(spatial,) * 3, augment=augment,
                           crop_mode=CROP_MODE, crop_size=spatial, mask_dir=MASK_DIR)
@@ -85,14 +65,13 @@ def _inner_split(train_items, seed, val_frac=0.2):
     return tr, va
 
 
-# --- H-char (malig vs benign) --------------------------------------------------------------------
 def _run_hchar_seed(seed, train_items, test_items, channels, spatial, batch, epochs, device,
                     shuffle_labels=False, medicalnet=None, backbone_lr=None, head_lr=None,
                     scheduler="none") -> dict[str, float]:
     set_seed(seed)
     set_determinism(seed)
     tr, va = _inner_split(train_items, seed)
-    if shuffle_labels:  # leakage sentinel: permute train+val labels; test AUROC must collapse to ~0.5
+    if shuffle_labels:  
         rng = np.random.default_rng(seed)
         allp = tr + va
         ys = rng.permutation([y for _, y in allp]).tolist()
@@ -102,16 +81,13 @@ def _run_hchar_seed(seed, train_items, test_items, channels, spatial, batch, epo
     npos = sum(y for _, y in tr) or 1
     pos_weight = (len(tr) - npos) / npos
     cfg = TrainCfg(epochs=epochs, batch_size=batch, device=device, loss="focal",
-                   amp=False, grad_clip=1.0, patience=10,  # fp32 + clip: dodge the fp16-NaN / freeze-bn burns
-                   # [medicalnet-backbone] LR-split + cosine, flag-gated; None/None/"none" == byte-identical.
+                   amp=False, grad_clip=1.0, patience=10,  
                    backbone_lr=backbone_lr, head_lr=head_lr, scheduler=scheduler)
-    # [medicalnet-backbone] pretrained-init, flag-gated; medicalnet=None == scratch (byte-identical).
     model = SubtypeClassifier(MriEncoder(in_channels=nch, depth=18, freeze_bn=False,
                                          medicalnet_weights=medicalnet))
     tr_loader = _loader(tr, channels, spatial, batch, augment=True, shuffle=True)
     va_loader = _loader(va, channels, spatial, batch, augment=False, shuffle=False)
     te_loader = _loader(test_items, channels, spatial, batch, augment=False, shuffle=False)
-    # images-only guard on the first real batch (ADR-0016 Fix #6)
     xb, _, _ = next(iter(tr_loader))
     assert_images_only(xb, nch)
     _, oof_probs, oof_pids = train_model(model, tr_loader, va_loader, cfg, pos_weight,
@@ -129,7 +105,7 @@ def run_hchar(train_items, test_items, channels, spatial, batch, epochs, device,
         probs = _run_hchar_seed(s, train_items, test_items, channels, spatial, batch, epochs, device,
                                 medicalnet=medicalnet, backbone_lr=backbone_lr, head_lr=head_lr,
                                 scheduler=scheduler)
-        pids = sorted(probs)  # fixed patient order
+        pids = sorted(probs)  
         tmap = {p: int(l) for p, l in test_items}
         yv = np.array([tmap[p] for p in pids])
         pv = np.array([probs[p] for p in pids])
@@ -138,7 +114,6 @@ def run_hchar(train_items, test_items, channels, spatial, batch, epochs, device,
         prob_by_seed[s] = {p: probs[p] for p in pids}
         log(f"  seed {s}: AUROC {m['auroc']['value']} CI {m['auroc']['ci95']} ECE {m['ece']['value']}")
 
-    # ensemble mean-probability across seeds on the sealed 50 -> headline DeLong CI (go/no-go)
     pids = sorted(prob_by_seed[seeds[0]])
     tmap = {p: int(l) for p, l in test_items}
     yv = np.array([tmap[p] for p in pids])
@@ -147,12 +122,11 @@ def run_hchar(train_items, test_items, channels, spatial, batch, epochs, device,
     auc, lo, hi = delong_ci(yv, ens)
     aurocs = [per_seed[str(s)]["auroc"]["value"] for s in seeds]
 
-    # leakage sentinel (1 seed, shuffled labels)
     log("H-char shuffle sentinel (1 seed, permuted labels)")
     sh_probs = _run_hchar_seed(seeds[0], train_items, test_items, channels, spatial, batch,
                                max(5, epochs // 4), device, shuffle_labels=True,
                                medicalnet=medicalnet, backbone_lr=backbone_lr, head_lr=head_lr,
-                               scheduler=scheduler)  # sentinel uses the SAME init/recipe as its cell
+                               scheduler=scheduler)  
     shp = np.array([sh_probs[p] for p in pids])
     sh_auc = float(delong_ci(yv, shp)[0])
 
@@ -178,12 +152,9 @@ def run_hchar(train_items, test_items, channels, spatial, batch, epochs, device,
     }
 
 
-# --- H5 (chronological age regression, Huber) ----------------------------------------------------
 class _AgeNet(nn.Module):
     def __init__(self, nch: int, medicalnet=None) -> None:
         super().__init__()
-        # [medicalnet-backbone] pretrained-init threaded for consistency (Section 2 decision 1);
-        # medicalnet=None == scratch (byte-identical). H5 keeps its own flat-LR loop (no LR-split flags).
         self.encoder = MriEncoder(in_channels=nch, depth=18, freeze_bn=False,
                                   medicalnet_weights=medicalnet)
         self.head = nn.Linear(self.encoder.embed_dim, 1)
@@ -204,12 +175,12 @@ def _mae_ci(y_true, y_pred, n=2000, seed=0):
 
 def run_h5(train_items, test_items, channels, spatial, batch, epochs, device, medicalnet=None,
            seed=0) -> dict:
-    assert_no_normals([p for p, _ in train_items + test_items])  # H5 also excludes normals (interlock)
+    assert_no_normals([p for p, _ in train_items + test_items])  
     assert_patient_disjoint([p for p, _ in train_items], [p for p, _ in test_items])
     set_seed(seed); set_determinism(seed)
     nch = n_channels(channels)
     ages = np.array([a for _, a in train_items], float)
-    mu, sd = float(ages.mean()), float(ages.std() + 1e-6)  # LOCK-2: standardize on TRAIN only
+    mu, sd = float(ages.mean()), float(ages.std() + 1e-6)  
     tr = [(p, (a - mu) / sd) for p, a in train_items]
     tr_in, va_in = train_test_split(tr, test_size=0.2, random_state=seed)
     model = _AgeNet(nch, medicalnet=medicalnet).to(device)
@@ -260,13 +231,8 @@ def run_h5(train_items, test_items, channels, spatial, batch, epochs, device, me
     }
 
 
-# --- smoke (overfit probe: prove the loop CAN memorize -> BN not dead, no freeze_bn artifact) ------
 def run_smoke(channels, spatial, device) -> int:
     cached_tr = _cached(hchar_items()["train"])
-    # BALANCE a tiny set so overfitting is MEANINGFUL. A single-class subset (e.g. the first cached
-    # patients 001-008 are all benign on this cohort) makes train-AUROC undefined (nan) AND a constant
-    # prediction optimal (spread ~0) -> a FALSE "BN-dead" smoke FAIL that would abort a healthy run.
-    # Take up to 6 malignant + 6 benign; require >=3 of each so BOTH AUROC and spread are informative.
     malig = [(p, y) for p, y in cached_tr if y == 1]
     benign = [(p, y) for p, y in cached_tr if y == 0]
     items = malig[:6] + benign[:6]
@@ -281,7 +247,6 @@ def run_smoke(channels, spatial, device) -> int:
     xb, _, _ = next(iter(loader)); assert_images_only(xb, nch)
     cfg = TrainCfg(epochs=40, batch_size=4, device=device, loss="bce", amp=False, patience=40)
     npos = sum(y for _, y in items) or 1
-    # train + evaluate ON THE SAME tiny set (memorization test, NOT a generalization claim)
     _, probs, pids = train_model(model, loader, loader, cfg, (len(items) - npos) / npos,
                                  log_tag="smoke", oof_loader=loader)
     tmap = {p: int(y) for p, y in items}
@@ -296,7 +261,7 @@ def run_smoke(channels, spatial, device) -> int:
 
 
 def main() -> None:
-    global PROC, MASK_DIR, CROP_MODE  # _loader/_cached read these; reassigned from args below
+    global PROC, MASK_DIR, CROP_MODE  
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--channels", default="pre_post", choices=["first_post", "pre_post", "fixed4", "subtraction", "kinetic"])
     ap.add_argument("--spatial", type=int, default=64, help="cube edge at train time (VRAM: 64 fits 8GB)")
@@ -306,7 +271,6 @@ def main() -> None:
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--hchar-only", action="store_true")
-    # [lesion-crop plan] additive, backward-compatible: all three default to the R0-R3 behavior.
     ap.add_argument("--crop-mode", default="none", choices=["none", "lesion"],
                     help="none=resize whole cube (R0-R3 default, byte-identical); lesion=heuristic-mask "
                          "lesion crop via NpyVolumeDataset (Rung 0 reads --mask-dir on the 96^3 grid)")
@@ -314,9 +278,6 @@ def main() -> None:
                     help="heuristic/predicted mask dir consumed only when --crop-mode lesion")
     ap.add_argument("--proc-dir", default=str(PROC),
                     help="processed-cube cache dir (Rung 1 points this at a pre-cropped lesion cache)")
-    # [medicalnet-backbone] additive, backward-compatible (mirrors scripts/train_imaging_mvp.py flag
-    # names/types/choices). Omitting all four is byte-identical to the R0-R3/Rung0/Rung1 behavior
-    # (scratch init + single-group AdamW at lr=1e-3, no schedule).
     ap.add_argument("--medicalnet", type=Path, default=None,
                     help="MedicalNet pretrained .pth for transfer init; omit for random (scratch) init")
     ap.add_argument("--backbone-lr", type=float, default=None,
@@ -330,13 +291,10 @@ def main() -> None:
                     help="LR schedule: none (default, unchanged) or cosine (CosineAnnealingLR "
                          "T_max=epochs, stepped per epoch — no warmup)")
     args = ap.parse_args()
-    # [medicalnet-backbone] fail-fast: a missing/typo'd --medicalnet path must NOT silently fall back to
-    # scratch init and waste a full ~14 min GPU run under a mislabeled cell. Fire BEFORE any data/GPU work.
     if args.medicalnet is not None and not Path(args.medicalnet).exists():
         raise SystemExit(
             f"BLOCKED: --medicalnet path {args.medicalnet} does not exist — refusing a silent "
             "scratch-init fallback. Fix the path or omit --medicalnet.")
-    # reassign the module globals _loader/_cached read (defaults leave them unchanged -> byte-identical).
     PROC = Path(args.proc_dir)
     MASK_DIR = Path(args.mask_dir)
     CROP_MODE = args.crop_mode
@@ -347,9 +305,6 @@ def main() -> None:
     if args.smoke:
         raise SystemExit(run_smoke(args.channels, args.spatial, device))
 
-    # [medicalnet-backbone] init-mode disclosure (Section 2 decision 4). The mechanical CONFIRMATION the
-    # pretrained load actually applied is MriEncoder._load_medicalnet's own "N missing / M unexpected
-    # keys" warning — captured only when the run's stderr is teed (every cell command uses 2>&1 | tee).
     log(f"init: {'MedicalNet-transfer (' + str(args.medicalnet) + ')' if args.medicalnet else 'scratch'}"
         + (f" | LR-split backbone={args.backbone_lr} head={args.head_lr} scheduler={args.scheduler}"
            if args.backbone_lr is not None else " | flat LR (single-group AdamW)"))

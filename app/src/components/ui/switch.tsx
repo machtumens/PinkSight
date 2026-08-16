@@ -1,9 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Minimal toggle switch (dependency-free, house style — no @radix-ui). Mirrors the shadcn Switch API
-// surface (`checked` + `onCheckedChange`) so call sites read the same, built on a native <button
-// role="switch"> for accessibility.
 export interface SwitchProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
   checked: boolean;

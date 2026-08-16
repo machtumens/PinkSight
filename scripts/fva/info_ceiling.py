@@ -1,15 +1,3 @@
-"""Information-ceiling audit: kNN Bayes-error sweep + model-family AUROC envelope (ported from h4).
-
-Ported (C2-5) verbatim from ``h4_info_ceiling.py`` — the estimator battery, hand-rolled primitives
-(TwoNN, linear CKA, Fisher ratio), the learned-arm OOF machinery, the STOP-gate replication controls
-(G1_FLOOR=0.567 gate A, EMB_ANCHOR=0.514 gate B), and the ceiling/residual verdict. These STOP-gate
-values are STRUCTURAL INTEGRITY checks, not tuneable parameters (preserved per C2-5). No algorithmic
-change: the code paths, RNG seeds, per-fold train-only fits, and patient-disjoint assertions are
-byte-identical to h4. Constants are threaded through FVAConfig where the checklist calls for it, but
-default to the frozen h4 values so a bare call reproduces h4 exactly.
-
-banned methods (unchanged): kNN-on-raw-512-d, joint KSG/MINE on 512-D, xgboost, skdim.
-"""
 
 from __future__ import annotations
 
@@ -30,18 +18,16 @@ from pinksight.metrics import delong_ci, ece
 
 from fva.shuffle_sentinel import shuffle_note
 
-# Frozen defaults (mirror h4 module constants verbatim; STOP-gates are structural, not tuneable) ---
 SEEDS = [0, 1, 2]
 N_SPLITS = 5
-G1_FLOOR = 0.567          # radiomics-LR anchor (STOP-gate A) — within 0.02
-EMB_ANCHOR = 0.514        # latent-probe subtype anchor (STOP-gate B) — within 0.03
+G1_FLOOR = 0.567          
+EMB_ANCHOR = 0.514        
 RADIOMICS_TOL = 0.02
 EMB_TOL = 0.03
 PCA_VAR = 0.90
 PCA_CAP = 50
 KNN_KS = [1, 3, 5, 10, 15]
 
-# Verdict thresholds — FIXED in the pre-reg. Evaluated, never chosen, here.
 CEILING_AUROC_MAX = 0.62
 CEILING_UB_MAX = 0.75
 RESIDUAL_AUROC_MIN = 0.65
@@ -50,15 +36,11 @@ CKA_STABLE_MEAN = 0.80
 CKA_STABLE_LB = 0.70
 
 
-# =================================================================================================
-# Hand-rolled primitives (TwoNN + CKA + Fisher — no skdim/external dep; verbatim from h4)
-# =================================================================================================
 def twonn_dim(X: np.ndarray) -> float:
-    """TwoNN intrinsic-dimension estimator (Facco 2017): d = <log(r2/r1)>^-1 over 1st/2nd NN ratios."""
     X = np.asarray(X, float)
     d2 = np.sum((X[:, None, :] - X[None, :, :]) ** 2, axis=2)
     np.fill_diagonal(d2, np.inf)
-    dist = np.sqrt(np.sort(d2, axis=1)[:, :2])  # r1, r2 per point
+    dist = np.sqrt(np.sort(d2, axis=1)[:, :2])  
     r1, r2 = dist[:, 0], dist[:, 1]
     keep = (r1 > 0) & np.isfinite(r2)
     mu = r2[keep] / r1[keep]
@@ -67,7 +49,6 @@ def twonn_dim(X: np.ndarray) -> float:
 
 
 def linear_cka(X: np.ndarray, Y: np.ndarray) -> float:
-    """Linear CKA (Kornblith 2019): ||Y^T X||_F^2 / (||X^T X||_F ||Y^T Y||_F) on column-centered X,Y."""
     X = np.asarray(X, float) - np.asarray(X, float).mean(0)
     Y = np.asarray(Y, float) - np.asarray(Y, float).mean(0)
     hsic = np.linalg.norm(Y.T @ X, "fro") ** 2
@@ -77,7 +58,6 @@ def linear_cka(X: np.ndarray, Y: np.ndarray) -> float:
 
 
 def fisher_ratio(X: np.ndarray, y: np.ndarray) -> float:
-    """Multivariate Fisher discriminant ratio tr(S_b)/tr(S_w): between- over within-class scatter."""
     X = np.asarray(X, float)
     mu = X.mean(0)
     sb = sw = 0.0
@@ -90,9 +70,6 @@ def fisher_ratio(X: np.ndarray, y: np.ndarray) -> float:
     return float(sb / sw) if sw > 0 else float("inf")
 
 
-# =================================================================================================
-# Learned-arm OOF machinery (verbatim from h4)
-# =================================================================================================
 def make_clf(kind: str):
     if kind == "logreg":
         return LogisticRegression(C=1.0, max_iter=2000)
@@ -115,7 +92,6 @@ def _needs_impute(X: np.ndarray) -> bool:
 
 def arm_oof(X: np.ndarray, y: np.ndarray, groups: np.ndarray, seed: int, kind: str,
             n_splits: int = N_SPLITS, shuffle: bool = False) -> np.ndarray:
-    """Pooled OOF positive-class probability for one estimator, one seed (verbatim from h4)."""
     y = np.asarray(y)
     if shuffle:
         y = np.random.default_rng(seed).permutation(y)
@@ -138,7 +114,6 @@ def arm_oof(X: np.ndarray, y: np.ndarray, groups: np.ndarray, seed: int, kind: s
 
 def run_family(X: np.ndarray, y: np.ndarray, groups: np.ndarray, kind: str,
                seeds=SEEDS, n_splits: int = N_SPLITS) -> dict:
-    """Multi-seed pooled-OOF AUROC + DeLong CI + ECE + shuffle sentinel for one estimator family."""
     per_auc, per_ci, per_ece, per_shuf = {}, {}, {}, {}
     for s in seeds:
         oof = arm_oof(X, y, groups, seed=s, kind=kind, n_splits=n_splits, shuffle=False)
@@ -166,12 +141,8 @@ def run_family(X: np.ndarray, y: np.ndarray, groups: np.ndarray, kind: str,
     }
 
 
-# =================================================================================================
-# Arm A — kNN Bayes-error sweep on PCA-radiomics (Cover-Hart bounds; verbatim from h4)
-# =================================================================================================
 def knn_bayes_sweep(Xpca: np.ndarray, y: np.ndarray, groups: np.ndarray,
                     seeds=SEEDS, n_splits: int = N_SPLITS, knn_ks=KNN_KS) -> dict:
-    """kNN pooled-OOF error + AUROC per k, with Cover-Hart 1-NN Bayes-error bounds (verbatim h4)."""
     out = {"per_k": {}}
     for k in knn_ks:
         per_seed_err, per_seed_auc = [], []
@@ -207,11 +178,7 @@ def knn_bayes_sweep(Xpca: np.ndarray, y: np.ndarray, groups: np.ndarray,
     return out
 
 
-# =================================================================================================
-# Arm F — folded linear-CKA recipe+seed stability across the 6 representation instances (verbatim h4)
-# =================================================================================================
 def cka_stability(pids_ref: np.ndarray, emb_dir, seeds=SEEDS) -> dict:
-    """Linear CKA across 2 recipes x 3 seeds (6 instances), aligned on the shared pid order."""
     from pathlib import Path
     emb_dir = Path(emb_dir)
     recipes = {
@@ -256,11 +223,7 @@ def cka_stability(pids_ref: np.ndarray, emb_dir, seeds=SEEDS) -> dict:
     }
 
 
-# =================================================================================================
-# Embedding-anchor replication control (verbatim from h4)
-# =================================================================================================
 def latent_probe_replication(manifest, emb_dir, seeds=SEEDS) -> dict:
-    """Reproduce g2_latent_probe.py EXACTLY: StratifiedKFold(5, rs=0), scaler-only, LogReg(2000)."""
     from pathlib import Path
     emb_dir = Path(emb_dir)
     man = pd.read_csv(manifest).set_index("patient_id")
@@ -284,9 +247,6 @@ def latent_probe_replication(manifest, emb_dir, seeds=SEEDS) -> dict:
             "protocol": "latent-probe exact: StratifiedKFold(5, rs=0), scaler-only, LogReg(max_iter=2000)"}
 
 
-# =================================================================================================
-# Self-check — synthetic + replication controls (verbatim from h4; STOP BLOCKED on any failure)
-# =================================================================================================
 def selfcheck(Xrad, y, groups, Xemb0, manifest, emb_dir) -> dict:
     rng = np.random.default_rng(0)
     t = rng.uniform(0, 1, (2000, 2))
@@ -333,7 +293,6 @@ def selfcheck(Xrad, y, groups, Xemb0, manifest, emb_dir) -> dict:
 
 
 def build_pca_radiomics(Xrad: np.ndarray) -> tuple[np.ndarray, int, float]:
-    """Global PCA on median-imputed+scaled radiomics: smallest #PC >=90% var, capped <=50 (verbatim)."""
     Xi = SimpleImputer(strategy="median").fit_transform(Xrad)
     Xs = StandardScaler().fit_transform(Xi)
     pca = PCA(n_components=min(PCA_CAP, Xs.shape[1])).fit(Xs)

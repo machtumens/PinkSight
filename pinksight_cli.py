@@ -1,32 +1,3 @@
-#!/usr/bin/env python3
-"""PinkSight jury workstation — the desktop app, in your terminal.
-
-This is a navigable ASCII mirror of the six PinkSight desktop screens (Dashboard,
-Patients, Study Viewer, Report, Audit Trail, Settings). It renders by calling the
-**same backend the website calls** — `build_report()` / `dispatch()` in
-`desktop/sidecar/main.py` — so a juror sees the real inference contract, not a
-reimplementation, with zero installs.
-
-Backend link (mirrors the website's own seam):
-  * in-process (default): imports the sidecar's `build_report` / `dispatch`. Pure
-    standard library, MOCK by construction. `--live` opts into one FORWARD-ONLY
-    synthetic pipeline pass (degrades to mock if the ML stack is absent).
-  * `--sidecar URL`: talks to a running FastAPI sidecar over the exact endpoints
-    the React app uses (`POST /infer`, `GET /dispatch`, `GET /health`) via urllib.
-
-Everything shown is characterisation at diagnosis on MOCK / SYNTHETIC data — never
-a result, never early detection, never kinetics, never a group-vs-group comparison.
-
-Usage:
-    python3 submission/pinksight_cli.py                 # interactive workstation
-    python3 submission/pinksight_cli.py dashboard       # jump to one screen
-    python3 submission/pinksight_cli.py study DUKE-0421 # open a study directly
-    python3 submission/pinksight_cli.py report DUKE-0421
-    python3 submission/pinksight_cli.py controls         # wiring self-check (control sentinel)
-    python3 submission/pinksight_cli.py --selfcheck      # tiny self-test
-Flags: --sidecar http://127.0.0.1:8756 · --live · --seed N · --no-anim · --no-color
-Screens: dashboard | patients | study [id] | report [id] | audit | settings | controls
-"""
 from __future__ import annotations
 
 import argparse
@@ -44,7 +15,6 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# ── verbatim website copy + fixtures (kept in sync with desktop/src) ─────────────
 TAGLINE = "Research · not clinical"
 INTEGRITY = "Integrity > Performance > Impact"
 DASH_SUBTITLE = "Explainable multimodal characterisation — subtype & grade at diagnosis."
@@ -57,23 +27,19 @@ STUDY_FOOTER = ("Characterisation & localisation only. Not early detection. Not 
                 "Ki-67 shown as a diagnosis-time descriptor, never kinetics.")
 FIREWALL = "MOCK / SYNTHETIC data — not a result. No real patients, no group-vs-group comparison."
 
-# desktop/src/routes/PatientBrowser.tsx
 STUDIES = [
     ("DUKE-0421", "P-0421", "GE 1.5T", 2019, "DCE 6-phase", "train/val"),
     ("DUKE-0588", "P-0588", "Siemens 3T", 2021, "DCE 5-phase", "train/val"),
     ("DUKE-0733", "P-0733", "GE 3T", 2020, "DCE 6-phase", "held-out"),
 ]
-# desktop/src/routes/Audit.tsx (append-only; this session's runs are appended live)
 AUDIT_LOG = [
     ["2026-07-13 15:42", "DUKE-0421", "characterise", "sha256:demo0000", "researcher"],
     ["2026-07-13 15:41", "DUKE-0421", "import DICOM", "—", "researcher"],
     ["2026-07-13 15:30", "DUKE-0588", "characterise", "sha256:demo0000", "researcher"],
 ]
-# desktop/src/components/DispatchPicker.tsx — the registry keys, surfaced verbatim
 COHORTS = ["duke", "tcga_brca", "metabric", "cptac_brca", "cdd_cesm", "cmmd", "fastmri_nyu", "track_c"]
 MODALITIES = ["mri", "clinical", "wsi", "genomics", "purity", "hrd", "proteomic", "cesm", "ffdm",
               "dce", "tabular", "recurrence"]
-# desktop/src/routes/StudyViewer.tsx COHORT_DEFAULTS
 COHORT_DEFAULTS = {
     "duke": ["mri", "clinical"], "tcga_brca": ["wsi", "genomics"],
     "metabric": ["clinical", "genomics"], "cptac_brca": ["proteomic", "genomics"],
@@ -84,7 +50,6 @@ MOD_GLYPH = {"mri": "◆", "clinical": "●", "path": "▲", "genomic": "■",
              "wsi": "▲", "genomics": "■"}
 
 
-# ── colour (gated on a real terminal) ────────────────────────────────────────────
 class C:
     on = False
 
@@ -128,7 +93,6 @@ def badge(text, t):
     return tone(f"[{text}]", t)
 
 
-# ── layout primitives (ANSI-safe: no right borders, pad by visible width) ─────────
 def rule(title=""):
     w = width()
     if not title:
@@ -161,9 +125,7 @@ def pct(n):
     return f"{round(n * 100)}%"
 
 
-# ── trust widgets: 1:1 with desktop/src/components ────────────────────────────────
 def uncertainty_bar(label, prob, band, abstained=False, indent=3):
-    """UncertaintyBar.tsx — a calibrated point inside its band, never a lone number."""
     if abstained:
         kv(label, badge("model declines — below confidence floor", "abstain"), indent)
         return
@@ -181,7 +143,6 @@ def uncertainty_bar(label, prob, band, abstained=False, indent=3):
 
 
 def modality_bars(mods, indent=3):
-    """ModalityBars.tsx — signed contributions diverging from a centre baseline."""
     present = [abs(m["contribution"]) for m in mods if m["present"]]
     mx = max([0.05] + present)
     half = max(10, (width() - 34) // 2)
@@ -206,7 +167,6 @@ def modality_bars(mods, indent=3):
 
 
 def calibration_meter(ece, band, indent=3):
-    """CalibrationMeter (Report.tsx) — ECE on 0..0.15 with good/acc ticks."""
     scale = 0.15
     w = max(24, width() - 26)
     fill = int(min(1.0, ece / scale) * w)
@@ -222,7 +182,6 @@ def calibration_meter(ece, band, indent=3):
 
 
 def ascii_phantom(phase, xai):
-    """MriPhantom.tsx — synthetic DCE phantom (same LCG seed 1337). Display axis only."""
     rows, cols = 14, 46
     cx, cy = cols / 2, rows / 2
     lx, ly = cx + cols * 0.12, cy - rows * 0.18
@@ -256,9 +215,7 @@ def ascii_phantom(phase, xai):
     return out
 
 
-# ── control-sentinel maths (kept: proves the wiring is not silently dead) ─────────
 def auroc(labels, scores):
-    """Area under ROC by the Mann-Whitney rank identity. Pure python, ties averaged."""
     pairs = sorted(zip(scores, labels))
     ranks = [0.0] * len(pairs)
     i = 0
@@ -288,13 +245,7 @@ def synth_cohort(rng, n, separation):
     return labels, scores
 
 
-# ── backend seam: the SAME build_report / dispatch the website calls ──────────────
 class Backend:
-    """Prefer the requested source; degrade to an in-process MOCK, never silently.
-
-    in-process: import desktop/sidecar/main.py (pure stdlib, mock by default).
-    sidecar:    urllib to POST /infer, GET /dispatch, GET /health — the React app's endpoints.
-    """
 
     def __init__(self, sidecar=None):
         self.sidecar = sidecar.rstrip("/") if sidecar else None
@@ -305,8 +256,8 @@ class Backend:
             scdir = root / "app" / "sidecar"
             if str(scdir) not in sys.path:
                 sys.path.insert(0, str(scdir))
-            self._main = importlib.import_module("main")  # the website's own backend module
-        except Exception as e:  # pragma: no cover — import guard
+            self._main = importlib.import_module("main")  
+        except Exception as e:  
             self.import_error = str(e)
 
     @property
@@ -324,7 +275,6 @@ class Backend:
             return json.load(r)
 
     def health(self):
-        """Mirror the Dashboard dot: online | offline | in-process."""
         if self.sidecar:
             try:
                 return "online" if self._http_json("GET", "/health", timeout=1.5).get("ok") else "offline"
@@ -338,7 +288,6 @@ class Backend:
         raise RuntimeError(self.import_error or "backend unavailable")
 
     def infer(self, study_id, live=False, cohort=None, mods=None):
-        """Return (report, degraded_note). degraded_note is set when we fell back to mock."""
         if self.sidecar:
             body = {"studyId": study_id, "live": live}
             if cohort:
@@ -348,7 +297,6 @@ class Backend:
                 return self._http_json("POST", "/infer", body), None
             except Exception as e:
                 return self._mock(study_id), f"sidecar unreachable ({e}) — degraded to mock"
-        # in-process
         os.environ["PINKSIGHT_SIDECAR_LIVE"] = "1" if live else "0"
         try:
             rep = self._main.build_report(
@@ -358,7 +306,6 @@ class Backend:
             return self._mock(study_id), f"live pass failed ({e}) — degraded to mock"
 
     def dispatch(self, cohort, mods):
-        """Routing-decision only. Returns (block, error). No mock fallback (never guess routing)."""
         if self.sidecar:
             q = urllib.parse.urlencode({"cohort": cohort, "modalities": ",".join(mods)})
             try:
@@ -376,13 +323,12 @@ class Backend:
             return None, str(e)
 
 
-# ── shared workstation state (the desktop app's context, in one object) ───────────
 class App:
     def __init__(self, backend, seed=None, anim=True):
         self.be = backend
         self.rng = random.Random(seed)
         self.anim = anim
-        self.live = False           # Settings inference mode: mock | live
+        self.live = False           
         self.study = STUDIES[0][0]
         self.cohort = ""
         self.mods = []
@@ -409,7 +355,6 @@ def screen_head(name, subtitle=""):
     print(rule())
 
 
-# ── screen 1: Dashboard ───────────────────────────────────────────────────────────
 def scr_dashboard(app):
     screen_head("Workstation", DASH_SUBTITLE)
     card("Active Model")
@@ -436,7 +381,6 @@ def scr_dashboard(app):
     bullet("Open Patients to load a study and run characterisation.")
 
 
-# ── screen 2: Patients ─────────────────────────────────────────────────────────────
 def scr_patients(app, interactive=True):
     screen_head("Patients", "Pick a study number to open the viewer.")
     print()
@@ -453,7 +397,6 @@ def scr_patients(app, interactive=True):
     return None
 
 
-# ── screen 3: Study Viewer ─────────────────────────────────────────────────────────
 def _render_viewer(app):
     screen_head("Study Viewer", f"{app.study} · DCE-MRI · phase {app.phase}/5")
     print()
@@ -508,7 +451,7 @@ def _pick_cohort(app):
     c = ask("  cohort # > ")
     if c.isdigit() and 1 <= int(c) <= len(COHORTS):
         app.cohort = COHORTS[int(c) - 1]
-        if not app.mods and app.cohort in COHORT_DEFAULTS:  # seed defaults, never clobber
+        if not app.mods and app.cohort in COHORT_DEFAULTS:  
             app.mods = list(COHORT_DEFAULTS[app.cohort])
 
 
@@ -562,13 +505,11 @@ def _run_characterise(app):
         print("   " + badge(degraded, "warn"))
     app.log.insert(0, [time.strftime("%Y-%m-%d %H:%M"), app.study, "characterise",
                        rep.get("audit", {}).get("modelHash", "—"), "jury"])
-    # compact in-viewer summary (the full artifact is the Report screen)
     uncertainty_bar(rep["subtype"]["label"], rep["subtype"]["probability"],
                     rep["subtype"]["uncertainty"], rep["subtype"].get("abstained", False))
     print("   " + C.dim("→ open the signed report with [o]."))
 
 
-# ── screen 4: Report ───────────────────────────────────────────────────────────────
 def scr_report(app):
     r = app.report
     if r is None:
@@ -630,7 +571,6 @@ def scr_report(app):
     print("   " + C.dim("[ Sign & export (PDF / DICOM-SR) — stub ]"))
 
 
-# ── screen 5: Audit Trail ──────────────────────────────────────────────────────────
 def scr_audit(app):
     screen_head("Audit Trail", "Append-only. Reproducible by construction.")
     print()
@@ -639,7 +579,6 @@ def scr_audit(app):
         print(f"   {C.dim(t):<18}{sid:<12}{badge(ev, 'muted'):<15}{C.dim(h):<18}{by}")
 
 
-# ── screen 6: Settings ─────────────────────────────────────────────────────────────
 def scr_settings(app, interactive=True):
     screen_head("Settings")
     card("Appearance")
@@ -659,7 +598,6 @@ def scr_settings(app, interactive=True):
         app.live = not app.live
 
 
-# ── screen 7 (extra): wiring self-check / control sentinel ─────────────────────────
 def scr_controls(app):
     screen_head("Wiring self-check", "Control sentinel — signal must follow labels, not survive a shuffle.")
     streams = [
@@ -681,7 +619,6 @@ def scr_controls(app):
     bullet("Verdicts stand alone — never added up or compared across streams. " + FIREWALL)
 
 
-# ── interactive workstation shell ──────────────────────────────────────────────────
 def workstation(app):
     screens = [
         ("Dashboard", scr_dashboard),
@@ -724,18 +661,16 @@ def workstation(app):
         ask(C.dim("\n  [enter] for screens "))
 
 
-# ── self-test: control maths + backend bridge + ledger scan ────────────────────────
 def selfcheck():
     assert abs(auroc([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9]) - 1.0) < 1e-9
     assert abs(auroc([1, 1, 0, 0], [0.1, 0.2, 0.8, 0.9]) - 0.0) < 1e-9
-    assert abs(auroc([0, 1, 0, 1], [0.5, 0.5, 0.5, 0.5]) - 0.5) < 1e-9  # all ties
+    assert abs(auroc([0, 1, 0, 1], [0.5, 0.5, 0.5, 0.5]) - 0.5) < 1e-9  
     rng = random.Random(0)
     lab, sc = synth_cohort(rng, 4000, 0.6)
     assert 0.75 < auroc(lab, sc) <= 1.0
     rng.shuffle(lab)
     assert abs(auroc(lab, sc) - 0.5) < 0.05
 
-    # backend bridge: the real website backend must import and produce the report contract
     be = Backend()
     assert be._main is not None, f"could not import website backend: {be.import_error}"
     rep, _ = be.infer("DUKE-0421", cohort="duke", mods=["mri", "clinical"])
@@ -745,10 +680,6 @@ def selfcheck():
     block, err = be.dispatch("duke", ["mri", "clinical"])
     assert err is None and block["status"] == "WIRED", block
 
-    # ledger: nothing we render from the payload may carry forbidden framing.
-    # Second group = the C3 juxtaposition phrase set (ADR-0012 / ADR-0015 firewall), kept in sync
-    # with ci/ledger_lint.py JUXTAPOSITION_PHRASES so the runtime backend selfcheck and the CI
-    # lint enforce the same never-say comparison phrases.
     forbidden = ["early detection", "pre-detection", "growth rate", "doubling time",
                  "tumour kinetics", "tumor kinetics", "cross-institution",
                  "imaging works", "corroborates duke",

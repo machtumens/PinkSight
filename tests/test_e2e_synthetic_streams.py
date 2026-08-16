@@ -1,19 +1,3 @@
-"""Fast small-N smoke gate for the ALL-STREAMS E2E synthetic harness (Streams A / B / C / F).
-
-Extends ``tests/test_e2e_synthetic_smoke.py`` (which covers the plain Track-A SYN-NEG/POS stream) to the
-three added model organs — Stream A (Track-A realism variant), Stream B (Track-B WSI+genomics), Stream
-F (fastMRI-NYU images-only encoder) — plus the already-shipped Stream C (Track-C tabular). Proves the
-STRUCTURAL, robust-at-small-N facts the plan requires per stream:
-
-  * ID prefixes are pairwise disjoint (DD-2 — no two synthetic sub-cohorts can ever be confused);
-  * no FORBIDDEN feature / gene mirror / biomarker column enters any input;
-  * each positive control injects a disclosed class shift the negative control lacks;
-  * the shared provenance gate RAISES on a tampered non-reportable tag/hash.
-
-Generator-level checks are torch-free (fast, always run). The end-to-end runner smokes that forward the
-frozen encoders (Stream A harness, Stream F encoder) ``importorskip`` torch/monai. Nothing here is a
-scientific result: every number is control-sentinel plumbing on fabricated data, no LOCK is moved.
-"""
 
 from __future__ import annotations
 
@@ -59,12 +43,7 @@ from pinksight.models.clinical_encoder import FEATURES_CAT, FEATURES_NUM
 SMOKE_N = 60
 
 
-# ==================================================================================================
-# Cross-stream — ID prefixes are pairwise disjoint (DD-2)
-# ==================================================================================================
 def test_all_stream_id_prefixes_pairwise_disjoint():
-    """Every synthetic sub-cohort lives in its own ID namespace: SYN-NEG/POS (plain Track-A),
-    SYN-A-NEG/POS (realism variant), SYN-B, SYN-C, SYN-F — pairwise disjoint so no two can be confused."""
     a_neg = {pid for pid, *_ in generate_realistic_negative_control(SMOKE_N, seed=0, cube_size=4)}
     a_pos = {pid for pid, *_ in generate_realistic_positive_control(SMOKE_N, seed=0, cube_size=4)}
     plain_neg = {pid for pid, *_ in generate_negative_control(SMOKE_N, seed=0, cube_size=4)}
@@ -91,9 +70,6 @@ def test_all_stream_id_prefixes_pairwise_disjoint():
     assert all(pid.startswith("SYN-C-") for pid in c_ids)
 
 
-# ==================================================================================================
-# Stream A — realism variant: Duke-like marginals, forbidden-free rows, disclosed shift injected
-# ==================================================================================================
 def test_stream_a_realistic_rows_forbidden_free_and_schema_matched():
     for _pid, _mri, row, _label in generate_realistic_negative_control(SMOKE_N, seed=0, cube_size=4):
         assert set(row) == set(FEATURES_NUM) | set(FEATURES_CAT), "realistic row keys != feature schema"
@@ -102,10 +78,10 @@ def test_stream_a_realistic_rows_forbidden_free_and_schema_matched():
 
 def test_stream_a_realistic_marginals_are_duke_like():
     neg = list(generate_realistic_negative_control(400, seed=0, cube_size=4))
-    ages = np.array([row[FEATURES_NUM[3]] for _, _, row, _ in neg])  # AGE_FEATURE is FEATURES_NUM[3]
+    ages = np.array([row[FEATURES_NUM[3]] for _, _, row, _ in neg])  
     assert 25.0 <= ages.min() and ages.max() <= 90.0, (ages.min(), ages.max())
-    assert 45.0 <= ages.mean() <= 67.0, ages.mean()  # ~N(56,13) clipped
-    prev = float(np.mean([y for *_, y in neg]))  # ~TNBC prevalence 0.21 (a marginal, not a signal)
+    assert 45.0 <= ages.mean() <= 67.0, ages.mean()  
+    prev = float(np.mean([y for *_, y in neg]))  
     assert 0.10 <= prev <= 0.35, prev
 
 
@@ -120,16 +96,11 @@ def test_stream_a_positive_injects_clinical_shift_negative_lacks():
     assert _tstage_gap(pos) > _tstage_gap(neg), "realism-variant positive shift not injected"
 
 
-# ==================================================================================================
-# Stream F — fastMRI images-only: no biomarker input, no normal analog, disclosed blob injected
-# ==================================================================================================
 def test_stream_f_is_images_only_and_has_no_normal_analog():
     stream = list(generate_fastmri_stream(SMOKE_N, seed=0, cube_size=6))
     _pid, cube, _label = stream[0]
     assert cube.shape == (FASTMRI_CHANNELS, 6, 6, 6), cube.shape
-    # images-only: the report feature descriptors are image channels, never a biomarker column.
     assert set(FASTMRI_IMAGE_FEATURES).isdisjoint(FORBIDDEN_FEATURES)
-    # no H6 / 51-verified-normal analog: labels are strictly {benign(0), malignant(1)}.
     assert {y for *_, y in stream} <= {0, 1}, "Stream-F carries a non-{benign,malignant} label"
 
 
@@ -145,20 +116,16 @@ def test_stream_f_positive_injects_enhancing_blob_negative_lacks():
     assert _blob_gap(pos, 8) > _blob_gap(neg, 8), "Stream-F positive enhancing blob not injected"
 
 
-# ==================================================================================================
-# Stream B — WSI + genomics: panel forbidden-free, canonical panel, disclosed gene/bag shift injected
-# ==================================================================================================
 def test_stream_b_panel_is_canonical_and_forbidden_free():
     assert MODALITY_C_GENES == ("TP53", "PIK3CA", "GATA3", "CDH1", "MAP3K1", "PTEN"), "panel drifted"
     assert set(MODALITY_C_GENES).isdisjoint(FORBIDDEN_FEATURES), "a Stream-B gene is a forbidden mirror"
-    # the ESR1/PGR/ERBB2/MKI67 IHC gene mirrors must NOT be in the panel (they live in FORBIDDEN_FEATURES).
     for mirror in ("ESR1", "PGR", "ERBB2", "MKI67"):
         assert mirror in FORBIDDEN_FEATURES and mirror not in MODALITY_C_GENES
 
 
 def test_stream_b_bag_and_gene_shapes():
     _pid, bag, genes, _label = next(iter(generate_wsi_genomics_stream(4, seed=0, n_tiles_range=(4, 8))))
-    assert bag.ndim == 2 and bag.shape[1] == UNI_DIM, bag.shape  # (n_tiles, 1536)
+    assert bag.ndim == 2 and bag.shape[1] == UNI_DIM, bag.shape  
     assert bag.dtype == np.float32
     assert genes.shape == (len(MODALITY_C_GENES),), genes.shape
 
@@ -174,9 +141,6 @@ def test_stream_b_positive_injects_gene_shift_negative_lacks():
     assert _gene0_gap(pos) > _gene0_gap(neg), "Stream-B positive gene-axis shift not injected"
 
 
-# ==================================================================================================
-# Shared provenance gate — RAISES on a tampered non-reportable tag / hash (firewall #2)
-# ==================================================================================================
 def _lean_report(organ, features):
     config = {"organ": organ, "stream_name": "negative_control", "n": 4, "seed": 0,
               "effect_size": 0.0, "git_commit": "test"}
@@ -194,12 +158,12 @@ def _lean_report(organ, features):
 )
 def test_provenance_gate_raises_on_tampered_tag(organ, features):
     report, manifest = _lean_report(organ, features)
-    assert_synthetic_provenance(report, manifest["manifest_sha256"])  # correct tag+hash passes
+    assert_synthetic_provenance(report, manifest["manifest_sha256"])  
     stripped = {**report, "provenance": {**report["provenance"], "datasetTag": "REAL"}}
     with pytest.raises(SyntheticProvenanceError):
-        assert_synthetic_provenance(stripped, manifest["manifest_sha256"])  # stripped tag raises
+        assert_synthetic_provenance(stripped, manifest["manifest_sha256"])  
     with pytest.raises(SyntheticProvenanceError):
-        assert_synthetic_provenance(report, "0" * 64)  # mismatched hash raises
+        assert_synthetic_provenance(report, "0" * 64)  
 
 
 def test_lean_report_is_forbidden_free_and_non_reportable():
@@ -209,9 +173,6 @@ def test_lean_report_is_forbidden_free_and_non_reportable():
 
 
 def test_control_verdict_leak_free_by_shuffle_field():
-    """The additive label-attribution field: leakFreeByShuffle is True when the real-label AUROC does
-    not exceed the permutation null (leak-free), False when a real injected signal separates by label,
-    and None when no shuffle companion is supplied. Deterministic (fixed OOF arrays, no CV)."""
     import numpy as np
 
     from pinksight.eval.e2e_report_contract import control_verdict
@@ -221,29 +182,21 @@ def test_control_verdict_leak_free_by_shuffle_field():
     y = np.array([0, 1] * (n // 2))
     noise = rng.normal(size=n)
 
-    # leak-free: real OOF == shuffle OOF -> identical AUROC -> signal 0.0 -> leak-free True
     neg = control_verdict("negative_control", y=y, real_oof=noise, shuffle_oof=noise)
     assert neg["leakFreeByShuffle"] is True
     assert neg["labelAttributableSignal"] == 0.0
 
-    # signal-bearing: real OOF is strongly label-correlated, shuffle is chance -> leak-free False
     real_sig = y + rng.normal(0, 0.3, n)
     pos = control_verdict("positive_control", y=y, real_oof=real_sig, shuffle_oof=noise)
     assert pos["leakFreeByShuffle"] is False
     assert pos["labelAttributableSignal"] > 0.15
 
-    # no shuffle companion -> field is None (unknown, not False)
     none_v = control_verdict("negative_control", y=y, real_oof=noise, shuffle_oof=None)
     assert none_v["leakFreeByShuffle"] is None
     assert none_v["labelAttributableSignal"] is None
 
 
-# ==================================================================================================
-# End-to-end runner smokes — the full spine produces a gated report (torch where the encoder runs)
-# ==================================================================================================
 def test_stream_b_runner_end_to_end_small_n():
-    """Stream-B runner (torch-free): mean-pool spine produces a provenance-gated report with a real
-    controlVerdict (leakage sentinel CI crosses 0.50; positive real collapses under shuffle)."""
     import e2e_synthetic_trackb_run as trackb
 
     neg = trackb.run_control("negative_control", 80, 0, "test", n_tiles_range=(4, 8))
@@ -251,17 +204,11 @@ def test_stream_b_runner_end_to_end_small_n():
     lo, hi = neg["controlVerdict"]["delongCi95"]
     assert lo <= 0.50 <= hi, f"Stream-B negative CI {neg['controlVerdict']['delongCi95']} must cross 0.50"
     pv = pos["controlVerdict"]
-    # p>>n at small N: the 1542-dim coalition (bag 1536 + genes 6) overfits on 80 samples, so the
-    # positive real only reaches ~0.62 and the strict `real>0.75 & shuffle<=0.55` gap can't show here.
-    # The small-N smoke proves WIRING — the positive recovers above chance AND collapses under label
-    # permutation. The strict bar is enforced by control_verdict at n=10k (confirmed real 0.9323 /
-    # shuffle 0.4996; see the task-folder report JSON). ponytail: small-N smoke tests wiring, not separation.
-    assert pv["auroc"] > 0.55, pv["auroc"]                                       # recovers above chance
-    assert pv["shuffleAuroc"] < pv["auroc"], (pv["shuffleAuroc"], pv["auroc"])   # collapses under shuffle
+    assert pv["auroc"] > 0.55, pv["auroc"]                                       
+    assert pv["shuffleAuroc"] < pv["auroc"], (pv["shuffleAuroc"], pv["auroc"])   
 
 
 def test_stream_f_runner_end_to_end_small_n():
-    """Stream-F runner (torch+monai): images-only encoder forward -> spine produces a gated report."""
     pytest.importorskip("torch")
     pytest.importorskip("monai")
     import e2e_synthetic_fastmri_run as fastmri
@@ -276,8 +223,6 @@ def test_stream_f_runner_end_to_end_small_n():
 
 
 def test_stream_a_realistic_runner_end_to_end_small_n():
-    """Stream-A realism variant through the FULL Track-A harness (torch+monai) produces a gated report
-    with SYN-A-* study IDs and the identical leakage-sentinel wiring."""
     pytest.importorskip("torch")
     pytest.importorskip("monai")
     import e2e_synthetic_harness_run as harness

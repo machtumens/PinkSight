@@ -1,22 +1,3 @@
-"""Rung 0 heuristic-mask builder + confound diagnostic (lesion-crop plan, checklist items 7 + 9).
-
-Reads each cached processed cube ``data/fastmri_processed_nyu/{pid}.npy`` (Nyul-normalized,
-``(4, 96, 96, 96)`` float32; channels ``[pre, post1, post2, post3]``), computes the label-blind
-``enhancement_mask(cube[0], cube[1])`` (pre vs first-post), and writes the boolean ``(96, 96, 96)``
-mask to ``data/fastmri_processed_nyu_masks/{pid}.npy`` — exactly the directory shape
-``NpyVolumeDataset(crop_mode="lesion", mask_dir=...)`` already expects.
-
-Also emits the Section-2 rule-1 REQUIRED confound diagnostic (unconditional disclosure, no
-cherry-picking): for the sealed test cohort (``hchar_items()["test"]``), per true class
-(malignant / benign), the fallback-rate and box-volume statistics of the SAME box the training
-loader derives — ``derive_lesion_box`` on the 96^3 grid with the dataset's built-in ``rim_mm=7``.
-A large malignant-vs-benign gap in fallback rate or mean box volume is the confound signature the
-plan is built to catch (a label-correlated crop geometry).
-
-    PYTHONPATH=src .venv/bin/python scripts/build_fastmri_heuristic_masks.py                 # build + diag
-    PYTHONPATH=src .venv/bin/python scripts/build_fastmri_heuristic_masks.py --diagnostic-only
-    PYTHONPATH=src .venv/bin/python scripts/build_fastmri_heuristic_masks.py --limit 8        # smoke subset
-"""
 
 from __future__ import annotations
 
@@ -35,17 +16,15 @@ from pinksight.models.h0_localizer import RIM_MM_DEFAULT
 
 PROC = Path("data/fastmri_processed_nyu")
 MASKS = Path("data/fastmri_processed_nyu_masks")
-# durable, git-trackable audit artifact (mirrors the Rung 1 crop_diagnostics.json pattern)
 DIAG_OUT = Path("process/general-plans/active/fastmri-lesion-crop_06-08-26/rung0_crop_diagnostics.json")
-GRID = (96, 96, 96)  # the cached processed-cube grid the masks live on
+GRID = (96, 96, 96)  
 
 
 def log(msg: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)  # noqa: T201
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)  
 
 
 def build_masks(limit: int | None) -> int:
-    """enhancement_mask(pre, first_post) -> boolean (96^3) mask per cached patient. Resumable."""
     MASKS.mkdir(parents=True, exist_ok=True)
     cubes = sorted(PROC.glob("*.npy"))
     if limit:
@@ -58,12 +37,12 @@ def build_masks(limit: int | None) -> int:
         out = MASKS / p.name
         if out.exists():
             continue
-        cube = np.load(p)  # (C, 96, 96, 96) float32; channel 0 = pre, channel 1 = first-post
+        cube = np.load(p)  
         if cube.ndim != 4 or cube.shape[0] < 2:
             log(f"  WARN {p.name}: unexpected shape {cube.shape} — need >=2 channels; skipping")
             continue
-        mask = enhancement_mask(cube[0], cube[1])  # label-blind, deterministic
-        np.save(out, mask)  # boolean (96, 96, 96)
+        mask = enhancement_mask(cube[0], cube[1])  
+        np.save(out, mask)  
         n += 1
         if n % 25 == 0:
             log(f"    masks built {n}")
@@ -73,20 +52,13 @@ def build_masks(limit: int | None) -> int:
 
 
 def _box_volume(mask: np.ndarray) -> tuple[float, bool]:
-    """Replicate the training loader's box geometry: derive_lesion_box on the 96^3 grid, rim_mm=7."""
     box, used_fallback = derive_lesion_box(mask, GRID, rim_mm=RIM_MM_DEFAULT)
     vol = float((box.row[1] - box.row[0]) * (box.col[1] - box.col[0]) * (box.slice[1] - box.slice[0]))
     return vol, bool(used_fallback)
 
 
 def confound_diagnostic() -> dict:
-    """Section-2 rule-1 REQUIRED deliverable: fallback-rate + box-volume BY CLASS over the test cohort.
-
-    Joins each sealed-test patient's heuristic mask to its true H-char label (malignant / benign) and
-    reports, per class: n, fallback_rate, mean_box_volume, box_volume_std, and mean box-fill-fraction
-    (box_volume / 96^3). Unconditional disclosure — this is the load-bearing integrity gate.
-    """
-    test_items = hchar_items()["test"]  # [(pid, label)] label: malig=1, benign=0
+    test_items = hchar_items()["test"]  
     per_class: dict[str, list[tuple[float, bool]]] = {"malignant": [], "benign": []}
     missing: list[str] = []
     for pid, label in test_items:

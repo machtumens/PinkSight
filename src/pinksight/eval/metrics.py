@@ -1,11 +1,3 @@
-"""P08 classification + Ki-67 metrics, each carrying a 95% CI (docs/CLAIM_LEDGER.md: never a bare number).
-
-EXTENDS pinksight.metrics (DeLong CI + ECE) — does not duplicate it. AUROC keeps the locked
-DeLong CI; every other metric gets a paired patient bootstrap so all reported numbers have an
-interval. Prefers sklearn/scipy over hand-rolled stats (ponytail).
-
-Claim-ledger: "subtype characterisation" + "Ki-67 stratification at diagnosis"; never growth-rate.
-"""
 
 from __future__ import annotations
 
@@ -20,7 +12,6 @@ _ALPHA = 0.05
 
 
 def _boot_ci(fn, *arrays, n=BOOT, seed=0):
-    """Percentile 95% CI of fn(*resampled) via a paired patient bootstrap (fixed seed)."""
     rng = np.random.default_rng(seed)
     m = len(arrays[0])
     vals = []
@@ -29,7 +20,7 @@ def _boot_ci(fn, *arrays, n=BOOT, seed=0):
         try:
             v = fn(*[a[idx] for a in arrays])
         except ValueError:
-            continue  # degenerate resample (single class) — drop it
+            continue  
         if np.isfinite(v):
             vals.append(v)
     lo, hi = np.percentile(vals, [100 * _ALPHA / 2, 100 * (1 - _ALPHA / 2)])
@@ -46,10 +37,6 @@ def _sens_spec(y_true, y_pred):
 
 
 def classification_metrics(y_true, y_prob, thr=0.5, boot_seed=0) -> dict:
-    """AUROC (DeLong CI) + PR-AUC / MCC / F1 / sensitivity / specificity (bootstrap CI) + ECE.
-
-    y_prob = P(positive = TNBC). Returns {metric: {value, ci95, ci_method}, n, prevalence}.
-    """
     y_true = np.asarray(y_true, int)
     y_prob = np.asarray(y_prob, float)
     auc, lo, hi = delong_ci(y_true, y_prob)
@@ -74,8 +61,6 @@ def classification_metrics(y_true, y_prob, thr=0.5, boot_seed=0) -> dict:
 
 
 def ki67_metrics(y_true, y_pred, thresh=14.0, boot_seed=0) -> dict:
-    """Ki-67 stratification at diagnosis: MAE + Pearson r + Spearman rho (bootstrap CI), plus the
-    high-vs-low @thresh AUROC (DeLong CI). A snapshot index — NOT growth rate / kinetics."""
     y_true = np.asarray(y_true, float)
     y_pred = np.asarray(y_pred, float)
     out = {}

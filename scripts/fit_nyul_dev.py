@@ -1,13 +1,3 @@
-"""Phase A1: fit the Nyul standard histogram on the FULL dev split's pre-contrast volumes.
-
-LOCK-2 (train-only): only dev-split patients feed the fit; the sealed Avanto test never does.
-Mirrors build_golden_fixture's fit (pre-contrast N4+iso volumes) but over all 613 resolvable dev
-patients instead of the 2-patient fixture — the old landmarks were degenerate (Session-09 risk).
-Overwrites configs/nyul_standard_v1.npy; re-run build_golden_fixture afterwards to re-freeze the hash.
-
-    PYTHONPATH=src .venv/bin/python scripts/fit_nyul_dev.py            # full dev
-    PYTHONPATH=src .venv/bin/python scripts/fit_nyul_dev.py --limit 30 # smoke
-"""
 
 import argparse
 from pathlib import Path
@@ -51,16 +41,16 @@ def main() -> None:
     for i, p in enumerate(dev):
         try:
             vols.append(to_rcs(chain(load_series(select_phase_stack(DUKE / p).pre.path))))
-        except Exception as e:  # noqa: BLE001 — a straggler must not abort the fit
+        except Exception as e:  
             skipped.append((p, str(e)[:80]))
         if (i + 1) % 25 == 0:
-            print(f"  N4+iso {i + 1}/{len(dev)}")  # noqa: T201
+            print(f"  N4+iso {i + 1}/{len(dev)}")  
     nyul = fit_nyul(vols)
     NYUL_LANDMARKS.parent.mkdir(parents=True, exist_ok=True)
     nyul.save_standard_histogram(str(NYUL_LANDMARKS))
-    print(f"Nyul fit on {len(vols)} dev pre-contrast volumes -> {NYUL_LANDMARKS}")  # noqa: T201
+    print(f"Nyul fit on {len(vols)} dev pre-contrast volumes -> {NYUL_LANDMARKS}")  
     if skipped:
-        print(f"skipped {len(skipped)}: {skipped[:5]}")  # noqa: T201
+        print(f"skipped {len(skipped)}: {skipped[:5]}")  
 
 
 if __name__ == "__main__":

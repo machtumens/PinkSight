@@ -1,4 +1,3 @@
-"""Covers the G0 audit counting logic via its synthetic self-check."""
 
 import sys
 from pathlib import Path

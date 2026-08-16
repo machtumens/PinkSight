@@ -1,10 +1,3 @@
-"""P09 inferential stats — the core research question: cross-attn fusion vs best unimodal.
-
-(1) paired bootstrap CI on ΔAUC; (2) DeLong test AGGREGATED across folds AND seeds; (3) power /
-MDE vs the pre-registered margin (ΔAUC ≥ 0.03, p<0.05). Reuses pinksight.metrics.delong_paired
-(correlated-ROC ΔAUC). Never asserts significance from a single split — seeds are independent
-replications combined by Stouffer's z (Rule 8). Claim-ledger: characterisation effects only.
-"""
 
 from __future__ import annotations
 
@@ -14,8 +7,8 @@ from scipy.stats import norm
 from pinksight.metrics import delong_paired
 
 Z975 = 1.959963984540054
-Z80 = 0.8416212335729143  # norm.ppf(0.80), for MDE at 80% power
-PREREG_MARGIN = 0.03  # decisions.md LOCK-6
+Z80 = 0.8416212335729143  
+PREREG_MARGIN = 0.03  
 
 
 def _auc(y, s) -> float:
@@ -27,7 +20,6 @@ def _auc(y, s) -> float:
 
 
 def paired_bootstrap_delta_auc(y, score_a, score_b, n=2000, seed=0) -> dict:
-    """Percentile 95% CI of AUC_b − AUC_a on ONE split via a paired patient bootstrap."""
     y = np.asarray(y, int)
     a, b = np.asarray(score_a, float), np.asarray(score_b, float)
     m = len(y)
@@ -50,11 +42,6 @@ def _se_from_ci(ci) -> float:
 
 def stats_report(y_by_seed, score_a_by_seed, score_b_by_seed, margin=PREREG_MARGIN,
                  boot=2000) -> dict:
-    """Aggregate ΔAUC across seeds. score_a = best unimodal, score_b = cross-attn fusion.
-
-    Returns per-seed DeLong + bootstrap, a combined Stouffer z / p, a mean bootstrap ΔAUC CI, the
-    MDE at 80% power, the power to detect `margin`, and the explicit pre-registered verdict.
-    """
     seeds = sorted(y_by_seed)
     per_seed = {}
     for s in seeds:
@@ -70,7 +57,7 @@ def stats_report(y_by_seed, score_a_by_seed, score_b_by_seed, margin=PREREG_MARG
     boot_lo = float(np.mean([per_seed[str(s)]["bootstrap"]["ci95"][0] for s in seeds]))
     boot_hi = float(np.mean([per_seed[str(s)]["bootstrap"]["ci95"][1] for s in seeds]))
 
-    z_comb = float(np.mean(zs) * np.sqrt(len(seeds)))  # Stouffer across independent seeds
+    z_comb = float(np.mean(zs) * np.sqrt(len(seeds)))  
     p_comb = float(2 * (1 - norm.cdf(abs(z_comb))))
     delta_mean = float(deltas.mean())
     se_mean = float(np.mean(ses))

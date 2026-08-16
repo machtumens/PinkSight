@@ -1,30 +1,3 @@
-#!/usr/bin/env python3
-"""fetch_weights — download + SHA-256-verify the 15 G5 imaging-encoder weight files.
-
-These 15 files are distributed as **GitHub Release assets** (they are not committed to the git
-tree). This script downloads each asset from the release, verifies it against the SHA-256 checksum
-manifest (``scripts/g5_weights.sha256``, built from ``results/TRAINED_ARTIFACTS.md``), and fails
-loudly on any hash mismatch — it never leaves an unverified weight file in place.
-
-The weight files are licensed CC-BY-NC-4.0 (see ``LICENSE-WEIGHTS.md``), separately from the
-Apache-2.0 code license; they are derived from Duke-Breast-Cancer-MRI (TCIA) and inherit its
-non-commercial term. Attribution is required — cite Saha et al. (2021), DOI 10.7937/TCIA.e3sv-re93 —
-and the files must not be used to re-identify subjects. They are provided for reproducibility and
-provenance of the research pipeline; see the release results and
-``docs/adr/0008-g3-fusion-architecture-reframe.md`` for what they do and do not demonstrate.
-
-THE RELEASE TAG IS A PLACEHOLDER until the GitHub Release is published. Set it at fetch time:
-
-    PINKSIGHT_RELEASE_TAG=vX.Y.Z-weights  python3 scripts/fetch_weights.py
-    python3 scripts/fetch_weights.py --tag vX.Y.Z-weights
-
-Other modes:
-
-    python3 scripts/fetch_weights.py --check          # verify already-present files, no network
-    python3 scripts/fetch_weights.py --base-url URL   # fetch <URL>/<filename> from a mirror
-
-Stdlib only — no third-party dependencies.
-"""
 
 from __future__ import annotations
 
@@ -36,20 +9,17 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # scripts/ -> repo root
+ROOT = Path(__file__).resolve().parents[1]  
 
 DEFAULT_REPO = "machtumens/PinkSight"
-# Placeholder — the GitHub Release does not exist yet. Override via --tag or PINKSIGHT_RELEASE_TAG
-# at release time (e.g. "v1.0.0-weights").
 PLACEHOLDER_TAG = "REPLACE_WITH_RELEASE_TAG"
 DEFAULT_CHECKSUM_FILE = ROOT / "scripts" / "g5_weights.sha256"
-CHUNK = 1 << 20  # 1 MiB
+CHUNK = 1 << 20  
 TIMEOUT = 120
 USER_AGENT = "pinksight-fetch-weights/1.0"
 
 
 def parse_checksums(path: Path) -> list[tuple[str, str]]:
-    """Return ``[(repo_relative_path, sha256_hex), ...]`` from a sha256sum-format file."""
     if not path.exists():
         sys.exit(f"ERROR: checksum file not found: {path}")
     rows: list[tuple[str, str]] = []
@@ -75,7 +45,6 @@ def sha256_file(path: Path) -> str:
 
 
 def download(url: str, dest_tmp: Path) -> str:
-    """Stream ``url`` -> ``dest_tmp``, returning the sha256 hex of the bytes written."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     dest_tmp.parent.mkdir(parents=True, exist_ok=True)
     h = hashlib.sha256()
@@ -126,7 +95,6 @@ def main(argv: list[str]) -> int:
 
     rows = parse_checksums(args.checksum_file)
 
-    # Resolve the asset base URL (skipped in --check mode; nothing is downloaded there).
     base_url = ""
     if not args.check:
         if args.base_url:
@@ -156,7 +124,6 @@ def main(argv: list[str]) -> int:
     failed: list[str] = []
 
     for rel, expected in rows:
-        # Destination honours the manifest's repo-relative path so `sha256sum -c` matches too.
         dest = ROOT / rel
         name = Path(rel).name
 

@@ -1,39 +1,3 @@
-#!/usr/bin/env python3
-"""G5 calibration RE-FIT — none vs temperature vs isotonic on the internal Duke clinical-anchor OOF.
-
-Plan item 6 (model-integrity-remediation_12-08-26). Closes the "temperature-scaling worsens internal
-ECE" claim with a proper 3-way comparison and names the HONEST best method (lowest ECE), regardless of
-outcome. $0-local, CPU only (LOCK-5). Characterisation framing only (LOCK-1); no FORBIDDEN feature ever
-enters anything — this is a post-hoc scalar/monotone map over EXISTING probabilities (LOCK-2 unchanged).
-
-INPUT: reports/G5_calibration/oof_probs_full.npz — the internal Duke clinical-subtype (0.708) headline
-per-patient OUT-OF-FOLD probabilities (pids [object], y, oof). This is the only rung with recoverable
-per-sample probs pre-dating this plan. `pids` is a numpy object array -> np.load(..., allow_pickle=True)
-(Execute-Agent Instruction E2).
-
-THREE calibration methods, ECE (binned) + SmoothECE (bin-free) for each:
-  * none          — the raw OOF probabilities (the OOF is CV-held-out, so this is already a held-out
-                    calibration state, nothing fit).
-  * temperature   — ONE scalar T fit on the OOF logits (val-equivalent), applied to the same OOF.
-                    Reuses pinksight.eval.calibration.fit_temperature/apply_temperature EXACTLY as
-                    scripts/g5_calibration.py (reproduces the Table2 `ECE 0.0196 -> 0.0244, T=1.095`).
-                    T is a 1-parameter map, so in-sample optimism on N=624 is negligible.
-  * isotonic      — a non-parametric monotone map. Fit+scored IN-SAMPLE it overfits to a fake ~0 ECE
-                    (the exact in-sample calibration leak documented for demo_coimbra: ECE ~3.4e-17).
-                    That is NOT a real improvement, so the HONEST isotonic number is a leakage-free
-                    K-fold HELD-OUT isotonic (fit on train folds, scored out-of-fold). The in-sample
-                    isotonic ECE is also recorded, clearly labelled as an optimistic LEAKY lower bound,
-                    and is NEVER used to pick `best_method`.
-
-BEST METHOD is chosen by lowest HELD-OUT/honest ECE among {none, temperature, isotonic(held-out)}, ties
-broken toward the SIMPLER method (none > temperature > isotonic — fewer fit parameters). The expected,
-honest finding is that no post-hoc method improves on the already-good raw calibration at this small N
-(temperature WORSENS ECE; held-out isotonic does not beat raw) -> best = none. Reported as-is either way.
-
-Seeded for reproducibility (LAW L-3): the held-out isotonic uses StratifiedKFold(random_state=0).
-
-Run:  uv run python scripts/g5_calibration_refit.py
-"""
 from __future__ import annotations
 
 import json
@@ -45,21 +9,18 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from pinksight.eval.calibration import apply_temperature, fit_temperature, smooth_ece  # noqa: E402
-from pinksight.metrics import ece  # noqa: E402
+from pinksight.eval.calibration import apply_temperature, fit_temperature, smooth_ece  
+from pinksight.metrics import ece  
 
 OUT_DIR = ROOT / "reports" / "G5_calibration"
 OOF_NPZ = OUT_DIR / "oof_probs_full.npz"
-# Plan checklist names calibration_refit.json; the EXECUTE handoff also names calibration_compare.json.
-# Write BOTH (identical content) so the plan gate and the handoff instruction are both satisfied.
 RESULTS_JSON = OUT_DIR / "calibration_refit.json"
 RESULTS_JSON_ALT = OUT_DIR / "calibration_compare.json"
 
 _EPS = 1e-6
 _KFOLDS = 5
-_SEED = 0  # LAW L-3 — deterministic held-out isotonic
+_SEED = 0  
 
-# The frozen Table2 / metrics.json temperature reference this item must reproduce.
 _TABLE2_ECE_RAW = 0.0196
 _TABLE2_ECE_TEMP = 0.0244
 _TABLE2_T = 1.0953
@@ -67,17 +28,11 @@ _REPRO_TOL = 0.005
 
 
 def _logit(p: np.ndarray) -> np.ndarray:
-    """Exact inverse-sigmoid (probs come from sigmoid(logits)); clip to avoid +/-inf at 0/1."""
     p = np.clip(np.asarray(p, float), _EPS, 1.0 - _EPS)
     return np.log(p / (1.0 - p))
 
 
 def _held_out_isotonic(oof: np.ndarray, y: np.ndarray, n_splits: int = _KFOLDS, seed: int = _SEED) -> np.ndarray:
-    """Leakage-free isotonic: K-fold, fit IsotonicRegression on train folds, score the held-out fold.
-
-    Each patient's calibrated prob comes from a monotone map that never saw that patient -> no in-sample
-    calibration leak. Mirrors the nested-CV recalibration discipline used in demo_coimbra_calibration.
-    """
     from sklearn.isotonic import IsotonicRegression
     from sklearn.model_selection import StratifiedKFold
 
@@ -94,8 +49,6 @@ def _held_out_isotonic(oof: np.ndarray, y: np.ndarray, n_splits: int = _KFOLDS, 
 
 
 def _in_sample_isotonic(oof: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """In-sample isotonic (fit+score on the SAME OOF) — an optimistic LEAKY lower bound, reported for
-    transparency only, NEVER used to select best_method (it fakes a ~0 ECE)."""
     from sklearn.isotonic import IsotonicRegression
 
     oof = np.asarray(oof, float)
@@ -111,21 +64,18 @@ def run() -> dict:
     if not OOF_NPZ.exists():
         raise FileNotFoundError(f"internal OOF probs absent: {OOF_NPZ} (run scripts/g5_calibration.py first)")
 
-    d = np.load(OOF_NPZ, allow_pickle=True)  # E2: pids is an object array
+    d = np.load(OOF_NPZ, allow_pickle=True)  
     y = np.asarray(d["y"], int)
     oof = np.asarray(d["oof"], float)
     n = int(len(y))
 
-    # --- none (raw OOF, already held-out) ---
     none_block = _block(y, oof)
 
-    # --- temperature (1-param, fit on OOF logits, applied to OOF) — reproduces the Table2 number ---
     temperature = float(fit_temperature(_logit(oof), y.astype(float)))
     p_temp = apply_temperature(_logit(oof), temperature)
     temp_block = _block(y, p_temp)
     temp_block["T"] = round(temperature, 4)
 
-    # --- isotonic: honest held-out + labelled leaky in-sample ---
     p_iso_ho = _held_out_isotonic(oof, y)
     iso_block = _block(y, p_iso_ho)
     iso_block["fit"] = "held_out_kfold5_seed0_leakage_free"
@@ -133,7 +83,6 @@ def run() -> dict:
     iso_in_sample = _block(y, p_iso_is)
     iso_in_sample["fit"] = "in_sample_LEAKY_optimistic_lower_bound_not_used_for_best"
 
-    # --- pick best by honest ECE, ties -> simpler ---
     candidates = {"none": none_block["ece"], "temperature": temp_block["ece"], "isotonic": iso_block["ece"]}
     simpler_rank = {"none": 0, "temperature": 1, "isotonic": 2}
     best_method = min(candidates, key=lambda m: (candidates[m], simpler_rank[m]))
@@ -192,14 +141,14 @@ def run() -> dict:
 
 def main() -> int:
     out = run()
-    print(json.dumps(out, indent=2))  # noqa: T201
-    print(  # noqa: T201
+    print(json.dumps(out, indent=2))  
+    print(  
         f"\n[calibration-refit] best={out['best_method']} | "
         f"none {out['none']['ece']} | temp {out['temperature']['ece']} (T={out['temperature']['T']}) | "
         f"isotonic-held-out {out['isotonic']['ece']} (in-sample-leaky {out['isotonic_in_sample_leaky']['ece']}) | "
         f"reproduces_table2_temp={out['reproduces_table2_temperature']}"
     )
-    print(f"[calibration-refit] wrote {RESULTS_JSON.relative_to(ROOT)} + {RESULTS_JSON_ALT.name}")  # noqa: T201
+    print(f"[calibration-refit] wrote {RESULTS_JSON.relative_to(ROOT)} + {RESULTS_JSON_ALT.name}")  
     return 0
 
 

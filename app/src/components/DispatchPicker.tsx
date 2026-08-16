@@ -6,8 +6,6 @@ import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fetchDispatch, type DispatchBlock } from "@/lib/inference";
 
-// The 8 cohorts + 12 modalities appearing across COHORT_HARNESS_REGISTRY / NOT_WIRED_COMBOS in
-// scripts/pinksight_dispatch.py — surfaced verbatim as the registry keys (technical abbreviations).
 const COHORTS = [
   "duke", "tcga_brca", "metabric", "cptac_brca", "cdd_cesm", "cmmd", "fastmri_nyu", "track_c",
 ] as const;
@@ -29,11 +27,6 @@ type RoutingState =
   | { state: "done"; dispatch: DispatchBlock }
   | { state: "failed"; error: string };
 
-// Routing-decision-only picker. It shows which research harness (organ) owns a (cohort, modalities)
-// selection and whether it is WIRED — and NOTHING that looks like a per-organ prediction. There is
-// NO run affordance in this component, ever: zero of the wired organs has a single-patient forward
-// path today (the honest ceiling), so a "run" here would be a lie. The existing generic synthetic
-// "Run characterisation" button lives in StudyViewer and is independent of this selection.
 export function DispatchPicker({ cohort, modalities, onCohortChange, onModalitiesChange }: Props) {
   const [routing, setRouting] = useState<RoutingState>({ state: "idle" });
 
@@ -100,7 +93,6 @@ export function DispatchPicker({ cohort, modalities, onCohortChange, onModalitie
                 {routing.dispatch.status}
               </Badge>
             </div>
-            {/* surfaced verbatim, never summarized away — the constitutional routing-only contract */}
             <div className="tnum text-xs text-muted-foreground">cross_cohort_gradient: false</div>
             <p className="text-xs text-muted-foreground">{routing.dispatch.note}</p>
             <p className="text-xs text-muted-foreground">

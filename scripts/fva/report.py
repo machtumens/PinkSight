@@ -1,14 +1,3 @@
-"""FVA report renderer: intermediate diagnostic dicts -> JSON + human-readable text (C2-6).
-
-Accepts the four FVA diagnostic components (Shapley attribution, shuffle sentinel, conditional-
-independence MI, information ceiling), evaluates the frozen verdict flags, and emits both a
-machine-readable JSON and a human-readable text summary.
-
-JSON keys (per C2-6): ``shapley``, ``shuffle_sentinel``, ``conditional_indep_mi``, ``info_ceiling``,
-``verdict_flags``, ``fva_verdict``.
-
-The verdict flags are EVALUATED against the frozen thresholds in FVAConfig — never chosen here.
-"""
 
 from __future__ import annotations
 
@@ -21,7 +10,6 @@ from fva.config import FVAConfig
 
 @dataclass
 class FVAReport:
-    """A rendered FVA diagnostic result (the ``run_fva`` return value)."""
 
     shapley: dict = field(default_factory=dict)
     shuffle_sentinel: dict = field(default_factory=dict)
@@ -51,13 +39,6 @@ def evaluate_verdict_flags(
     mri_p: float | None,
     cfg: FVAConfig,
 ) -> dict:
-    """Evaluate the frozen FVA verdict flags. Never chooses thresholds — reads them from cfg.
-
-    Returns a dict of boolean/string flags:
-      - efficiency_ok: Shapley Σφ == v(N)-v(∅) within cfg.efficiency_tol
-      - mri_verdict: MRI-ADDITIVE / MRI-NON-ADDITIVE / AMBIGUOUS (if mri_delta/mri_p supplied)
-      - ceiling_verdict: CEILING-CONFIRMED / RESIDUAL-SIGNAL / AMBIGUOUS (if info_ceiling supplied)
-    """
     flags: dict = {}
     if shapley:
         flags["efficiency_ok"] = bool(shapley.get("efficiency_ok", False))
@@ -90,12 +71,6 @@ def evaluate_verdict_flags(
 
 
 def synthesize_verdict(flags: dict) -> str:
-    """Combine component verdicts into one FVA headline verdict.
-
-    A fusion claim PASSES the FVA diagnostic only when every present component is consistent with
-    the modality being non-additive at the ceiling. The headline is descriptive, not a gate on the
-    science — it summarises what the four diagnostics jointly say.
-    """
     if not flags.get("efficiency_ok", True):
         return "FVA-INVALID (Shapley efficiency axiom violated)"
     parts = []
@@ -109,7 +84,6 @@ def synthesize_verdict(flags: dict) -> str:
 
 
 def render(report: FVAReport, out_dir: Path, tag: str) -> tuple[Path, Path]:
-    """Write ``fva_{tag}_REPORT.json`` + ``.txt`` to out_dir; return the two paths."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"fva_{tag}_REPORT.json"

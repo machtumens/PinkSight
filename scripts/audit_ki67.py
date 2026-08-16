@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""G0 audit — the single most important hour of the project (decisions.md O-2).
-
-Counts USABLE NUMERIC Ki-67 N in the Duke Clinical_and_Other_Features table and emits the
-N-waterfall. That number decides whether Ki-67 is a primary head or a demoted sub-analysis.
-
-Ki-67 is NOT an enumerated Duke field (it appears only in radiogenomics text) — so this script
-searches columns by name and counts cells that parse as a numeric percentage.
-
-Usage:
-    python scripts/audit_ki67.py --table data/raw/Clinical_and_Other_Features.xlsx
-    python scripts/audit_ki67.py --selfcheck     # synthetic check, no data needed
-
-ponytail: one file, stdlib + pandas. No data → exits with a clear message, not a stack trace.
-"""
 
 from __future__ import annotations
 
@@ -25,12 +10,10 @@ import pandas as pd
 
 KI67_PAT = re.compile(r"ki.?67", re.IGNORECASE)
 SUBTYPE_PAT = re.compile(r"subtype|luminal|triple|tnbc|molecular", re.IGNORECASE)
-# DCE-MRI presence proxy column names; refine once the real schema is known.
 MRI_PAT = re.compile(r"mri|dce|scan|series", re.IGNORECASE)
 
 
 def numeric_ki67(series: pd.Series) -> pd.Series:
-    """Cells usable as a Ki-67 percentage: parse to float, keep 0..100."""
     vals = pd.to_numeric(
         series.astype(str).str.extract(r"(-?\d+\.?\d*)", expand=False), errors="coerce"
     )
@@ -47,11 +30,10 @@ def audit(df: pd.DataFrame) -> dict:
     subtype_cols = find_cols(df, SUBTYPE_PAT)
     ki67_cols = find_cols(df, KI67_PAT)
 
-    has_mri = df[mri_cols].notna().any(axis=1).sum() if mri_cols else total  # proxy
+    has_mri = df[mri_cols].notna().any(axis=1).sum() if mri_cols else total  
     has_subtype = df[subtype_cols].notna().any(axis=1).sum() if subtype_cols else 0
     ki67_usable = 0
     if ki67_cols:
-        # Per-patient: usable if ANY ki67 column has a valid numeric value.
         mask = pd.Series(False, index=df.index)
         for c in ki67_cols:
             mask |= numeric_ki67(df[c]).reindex(df.index).notna()
@@ -93,13 +75,12 @@ def render(r: dict) -> str:
 
 
 def selfcheck() -> int:
-    """Synthetic table proves the counting logic without real data."""
     df = pd.DataFrame(
         {
             "Patient ID": [1, 2, 3, 4, 5],
             "MRI Series": ["a", "b", None, "d", "e"],
             "Molecular Subtype": ["LumA", "TNBC", "LumA", None, "TNBC"],
-            "Ki-67 (%)": ["20%", "n/a", "55", "", "5.5"],  # 3 usable: 20, 55, 5.5
+            "Ki-67 (%)": ["20%", "n/a", "55", "", "5.5"],  
         }
     )
     r = audit(df)
@@ -108,7 +89,6 @@ def selfcheck() -> int:
     assert r["ki67_cols"] == ["Ki-67 (%)"], r
     assert r["subtype_dist"] == {"LumA": 2, "TNBC": 2}, r
     assert numeric_ki67(pd.Series(["150", "-3", "30"])).tolist() == [30.0], "range filter"
-    # 3-row grouped-header resolution (the Duke layout) must pick row1 as names.
     grouped = pd.DataFrame(
         [
             ["Group A", None],
@@ -125,14 +105,6 @@ def selfcheck() -> int:
 
 
 def _resolve_header(raw: pd.DataFrame) -> pd.DataFrame:
-    """Pick the real header row.
-
-    The Duke Clinical_and_Other_Features table ships a 3-row header: row0 = merged
-    group titles (mostly blank), row1 = real column names (fully populated), row2 =
-    value legends, data from row3. Detect that shape and use row1 as the header;
-    otherwise treat row0 as a normal single header.
-    ponytail: heuristic for the one real file; plain header=0 fallback for clean tables.
-    """
     if len(raw) > 3 and raw.iloc[0].isna().mean() > 0.3 and raw.iloc[1].notna().mean() > 0.5:
         df = raw.iloc[3:].copy()
         df.columns = [str(c) for c in raw.iloc[1]]

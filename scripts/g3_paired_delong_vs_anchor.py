@@ -1,31 +1,3 @@
-"""G3 item-3/5 — real paired DeLong of the fusion rungs vs the clinical-0.708 anchor OOF.
-
-Closes the `KNOWN-GAP` in `reports/G3_fusion_arch_bundle/delong_deltas.json`
-(`hierarchical_vs_clinical_alone.paired_delong_status`): the #4 hierarchical and #7 MoE per-sample
-OOF probabilities are now on disk (item-2 `--save-oof-dir` re-runs), so a genuine paired DeLong vs
-the SAME patients' clinical-anchor OOF is finally computable — no arrays fabricated.
-
-Inputs (all frozen / already on disk — NO imaging-encoder re-run, reads cached OOF only):
-  reports/G3_fusion_arch_bundle/oof_arrays/hierarchical_oof_s{0,1,2}.npz  (#4, Worker A save)
-  reports/G3_fusion_arch_bundle/oof_arrays/moe_oof_s{0,1,2}.npz           (#7 md5-deterministic, item 2)
-  reports/G5_calibration/oof_probs_full.npz                              (clinical 0.708 LogReg anchor)
-
-Flat-fusion has NO per-sample OOF on disk (`probs_recoverable:false`, delong_deltas.json). Its genuine
-floor-time paired DeLong vs clinical (p=0.9838) is REUSED verbatim here — arrays are NOT reconstructed.
-
-Alignment: fusion pids (613) are a strict subset of the anchor pids (624). Each fusion pid is matched
-to the anchor by id; the per-pid subtype label is asserted to agree between fusion and anchor (a
-mismatch is a data-integrity bug -> STOP). delong_paired(y, anchor_oof, fusion_oof) => delta =
-fusion - clinical (negative expected; confirms the honest-null).
-
-Also emits the pooled-ensemble DeLong CI (3-seed per-patient mean) for #4 and #7 — the item-5
-replacement for the "seed-0-representative CI" mismatch.
-
-Claim-ledger: subtype characterisation at diagnosis; every rung's AUROC < 0.708 clinical anchor;
-honest-null (imaging-fusion adds nothing over clinical). No LOCK moved.
-
-    PYTHONPATH=src .venv/bin/python scripts/g3_paired_delong_vs_anchor.py
-"""
 from __future__ import annotations
 
 import json
@@ -43,14 +15,11 @@ DELONG_DELTAS = ROOT / "reports/G3_fusion_arch_bundle/delong_deltas.json"
 OUT = ROOT / "reports/G3_fusion_arch_bundle/paired_vs_anchor_delong.json"
 
 SEEDS = (0, 1, 2)
-CLINICAL_HEADLINE = 0.708  # per-seed-mean H6 coalition headline (ablation anchor)
+CLINICAL_HEADLINE = 0.708  
 PREREG_MARGIN = 0.03
 
 
 def _load_fusion_oof(prefix: str) -> tuple[np.ndarray, dict[int, np.ndarray], dict[int, np.ndarray]]:
-    """Return (shared_pids, oof_by_seed, y_by_seed) for a fusion rung's per-seed OOF npz files.
-
-    build_aligned() sorts the intersection, so all 3 seeds share an identical pid order — asserted."""
     pids_ref = None
     oof_by_seed, y_by_seed = {}, {}
     for s in SEEDS:
@@ -66,26 +35,22 @@ def _load_fusion_oof(prefix: str) -> tuple[np.ndarray, dict[int, np.ndarray], di
 
 
 def _stouffer(zs: list[float]) -> float:
-    """Two-sided Stouffer-combined p across k independent seeds (signed z summed)."""
     z = sum(zs) / sqrt(len(zs))
     return 2.0 * (1.0 - _normal_cdf(abs(z)))
 
 
 def _paired_vs_anchor(name: str, pids, oof_by_seed, y_by_seed,
                       anchor_by_pid: dict[str, tuple[int, float]]) -> dict:
-    """Per-seed paired DeLong (clinical anchor = a, fusion = b; delta = fusion - clinical)."""
-    # align the anchor to this rung's fixed pid order (identical across its seeds)
     anchor_oof = np.array([anchor_by_pid[p][1] for p in pids], float)
     anchor_y = np.array([anchor_by_pid[p][0] for p in pids], int)
 
     per_seed, zs, deltas = {}, [], []
     for s in SEEDS:
         y_f = y_by_seed[s]
-        # label-agreement assertion: same patient must carry the same subtype label in both OOFs
         if not np.array_equal(y_f, anchor_y):
             n_bad = int(np.sum(y_f != anchor_y))
             raise SystemExit(f"{name} seed {s}: {n_bad} pid label mismatch fusion-vs-anchor — STOP")
-        r = delong_paired(anchor_y, anchor_oof, oof_by_seed[s])  # a=clinical, b=fusion
+        r = delong_paired(anchor_y, anchor_oof, oof_by_seed[s])  
         per_seed[str(s)] = {"auc_clinical": round(r["auc_a"], 4), "auc_fusion": round(r["auc_b"], 4),
                             "delta": round(r["delta"], 4), "ci95": [round(r["ci95"][0], 4),
                             round(r["ci95"][1], 4)], "z": round(r["z"], 4), "p": round(r["p"], 4)}
@@ -104,7 +69,6 @@ def _paired_vs_anchor(name: str, pids, oof_by_seed, y_by_seed,
 
 
 def main() -> None:
-    # clinical anchor (E2: pids is a numpy object array -> allow_pickle=True required)
     az = np.load(ANCHOR_NPZ, allow_pickle=True)
     a_pids = np.array([str(p) for p in az["pids"]])
     a_y = np.asarray(az["y"], int)
@@ -115,24 +79,21 @@ def main() -> None:
     hier_pids, hier_oof, hier_y = _load_fusion_oof("hierarchical")
     moe_pids, moe_oof, moe_y = _load_fusion_oof("moe")
 
-    # both fusion rungs must share the same 613 dev pids -> a clean #4-vs-#7 paired comparison too
     if not np.array_equal(hier_pids, moe_pids):
         raise SystemExit("hierarchical and moe pid sets differ — STOP")
 
     hier_vs_clin = _paired_vs_anchor("hierarchical(#4)", hier_pids, hier_oof, hier_y, anchor_by_pid)
     moe_vs_clin = _paired_vs_anchor("moe_deterministic(#7)", moe_pids, moe_oof, moe_y, anchor_by_pid)
 
-    # #4 vs #7 on their shared 613 patients (per seed; delta = moe - hierarchical)
     hm_per_seed, hm_z, hm_delta = {}, [], []
     for s in SEEDS:
-        r = delong_paired(hier_y[s], hier_oof[s], moe_oof[s])  # a=#4, b=#7
+        r = delong_paired(hier_y[s], hier_oof[s], moe_oof[s])  
         hm_per_seed[str(s)] = {"auc_hier": round(r["auc_a"], 4), "auc_moe": round(r["auc_b"], 4),
                                "delta": round(r["delta"], 4), "z": round(r["z"], 4),
                                "p": round(r["p"], 4)}
         hm_z.append(r["z"])
         hm_delta.append(r["delta"])
 
-    # pooled-ensemble CI (item 5): 3-seed per-patient mean prob -> ONE DeLong CI (replaces seed-0 CI)
     def _pooled(oof_by_seed, y_by_seed):
         pooled = np.mean([oof_by_seed[s] for s in SEEDS], axis=0)
         y0 = y_by_seed[SEEDS[0]]
@@ -144,7 +105,6 @@ def main() -> None:
     pooled_hier = _pooled(hier_oof, hier_y)
     pooled_moe = _pooled(moe_oof, moe_y)
 
-    # flat-fusion: REUSE the genuine on-disk floor-time paired DeLong (arrays never saved; NOT rebuilt)
     dd = json.loads(DELONG_DELTAS.read_text())
     flat = dd["flat_fusion_vs_clinical_alone_ondisk"]
 

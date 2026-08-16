@@ -1,40 +1,24 @@
-# Arm 2 (Wave 1) — pan-subtype subtype-purity / admixture organ (PinkSight novel heads, OPSI 2026).
-#
-# Ledger (LOCK-1/LOCK-2): subtype-admixture CHARACTERISATION at diagnosis from NON-identity
-# (non-PAM50) expression. PAM50 IS the subtype definition — feeding it (or ESR1/ERBB2/MKI67) is
-# circular + a LOCK-2 leak, so all 53 are held out of inputs. Frame as characterisation, never a
-# subtype predictor from known markers.
-#
-# STATUS: DRY STUB (populated: false). Dataset paths are placeholders; the execute agent stages
-# METABRIC + TCGA-BRCA and flips populated -> true before the floor gate runs.
 
 schema: pinksight.novel-heads/arm2-v1
 arm: 2
 wave: 1
-role: subtype-admixture-characterisation   # at-diagnosis; standalone organ (ADR-0010 companion)
+role: subtype-admixture-characterisation
 compute: cpu-zero-dollar
-model: lightgbm                            # floor gate; elastic-net + SHAP on GREENLIGHT
-populated: false                           # flips true once datasets are staged
+model: lightgbm
+populated: false
 
-# --- Datasets (placeholders — public, no download cost) --------------------------------------------
 datasets:
-  metabric_expression: TBD/metabric_gene_expression.csv         # cBioPortal
-  metabric_clinical: TBD/metabric_clinical.tsv                  # cBioPortal
-  tcga_brca_expression: TBD/data_mrna_seq_v2_rsem_zscores_ref_diploid_samples.txt   # GDC
+  metabric_expression: TBD/metabric_gene_expression.csv
+  metabric_clinical: TBD/metabric_clinical.tsv
+  tcga_brca_expression: TBD/data_mrna_seq_v2_rsem_zscores_ref_diploid_samples.txt
 
-# --- Target ----------------------------------------------------------------------------------------
-target: purity_admixture                   # continuous ABSOLUTE/ESTIMATE purity (primary); binary clean-vs-admixed (secondary)
+target: purity_admixture
 
-# --- Thresholds (plan Wave 1 arm 2 spec) -----------------------------------------------------------
-seeds: [0, 1, 2]                           # 3 = eval-integrity floor; 5 = target
-kill_threshold_auroc: 0.52                 # AUROC <= 0.52 at 3 seeds -> terminate, honest-null report
-greenlight_threshold_auroc: 0.62           # AUROC >= 0.62 AND DeLong CI LB >= 0.52 -> advance
+seeds: [0, 1, 2]
+kill_threshold_auroc: 0.52
+greenlight_threshold_auroc: 0.62
 greenlight_delong_ci_lb: 0.52
 
-# --- Leakage exclusion (CRITICAL, LOCK-2) ----------------------------------------------------------
-# The 50 PAM50 genes (Parker et al. 2009, J Clin Oncol) + ESR1/ERBB2/MKI67 = 53 forbidden inputs.
-# This list is the SOURCE OF TRUTH for arm 2 input exclusion — never inline it ad hoc in the script.
-# Verify against the cBioPortal TCGA-BRCA PAM50 annotation before the floor gate.
 pam50_exclude_genes:
   - ACTR3B
   - ANLN
@@ -86,13 +70,10 @@ pam50_exclude_genes:
   - TYMS
   - UBE2C
   - UBE2T
-  # --- IHC/subtype-defining transcripts held out on top of PAM50 (LOCK-2 mirror; ESR1/ERBB2 already
-  #     appear above as PAM50 members — MKI67 too — listed here for explicit auditability) ---
   - ESR1
   - ERBB2
   - MKI67
 
-# --- Ledger guard (verbatim in every arm 2 report) -------------------------------------------------
 ledger_guard: >
   subtype admixture characterisation from non-identity expression features at diagnosis.
   Never a subtype predictor from known markers (PAM50 held out; using it is circular + a LOCK-2 leak).

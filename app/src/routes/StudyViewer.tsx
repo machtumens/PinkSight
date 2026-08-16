@@ -16,9 +16,6 @@ import {
   type JobState,
 } from "@/lib/inference";
 
-// Sensible default modalities per cohort so the picker is actionable on selection instead of empty.
-// These are DISPLAY defaults for the routing check only — the dispatcher (scripts/) stays the
-// authority on what is actually WIRED.
 const COHORT_DEFAULTS: Record<string, string[]> = {
   duke: ["mri", "clinical"],
   tcga_brca: ["wsi", "genomics"],
@@ -34,7 +31,7 @@ export default function StudyViewer() {
   const { id = "DUKE-0421" } = useParams();
   const nav = useNavigate();
   const { mode } = useInferenceMode();
-  const [phase, setPhase] = useState(2); // DCE phase scrubber (0..5)
+  const [phase, setPhase] = useState(2);
   const [xai, setXai] = useState(true);
   const [job, setJob] = useState<JobState>("queued");
   const [report, setReport] = useState<CharacterisationReport | null>(null);
@@ -52,8 +49,6 @@ export default function StudyViewer() {
     setJob("done");
   }
 
-  // Seed sensible default modalities when a cohort is chosen and none are picked yet — never clobber
-  // an explicit selection.
   function handleCohort(next: string) {
     setCohort(next);
     if (next && modalities.length === 0 && COHORT_DEFAULTS[next]) setModalities(COHORT_DEFAULTS[next]);
@@ -61,7 +56,6 @@ export default function StudyViewer() {
 
   return (
     <div className="grid h-full grid-cols-[1fr_380px]">
-      {/* ── Viewport ─────────────────────────────────────────── */}
       <section className="flex flex-col bg-black/90">
         <div className="flex items-center justify-between border-b border-border/40 px-4 py-2 text-sm text-white/80">
           <span className="tnum">{id} · DCE-MRI · phase {phase}/5</span>
@@ -74,7 +68,6 @@ export default function StudyViewer() {
           </Button>
         </div>
 
-        {/* Synthetic DCE phantom (see MriPhantom) — a real build mounts Cornerstone3D/VTK.js here */}
         <div className="relative flex flex-1 items-center justify-center p-6">
           <MriPhantom phase={phase} xai={xai} />
           <span className="absolute bottom-4 text-xs text-white/40">
@@ -82,7 +75,6 @@ export default function StudyViewer() {
           </span>
         </div>
 
-        {/* DCE phase scrubber — enhancement is a display axis, not a kinetics claim */}
         <div className="border-t border-border/40 px-4 py-3">
           <input
             type="range" min={0} max={5} value={phase}
@@ -92,7 +84,6 @@ export default function StudyViewer() {
         </div>
       </section>
 
-      {/* ── Analysis rail ────────────────────────────────────── */}
       <section className="flex flex-col gap-4 overflow-y-auto border-l border-border p-4">
         <DispatchPicker
           cohort={cohort}

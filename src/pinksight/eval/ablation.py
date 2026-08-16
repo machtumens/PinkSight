@@ -1,12 +1,3 @@
-"""P08 ablation ladder: radiomics → unimodal → late-fusion → cross-attn over identical folds/seeds.
-
-Model-agnostic — consumes each rung's per-seed pooled out-of-fold probabilities on a shared,
-patient-aligned label vector. Emits a per-rung metrics block (AUROC = DeLong CI averaged across
-seeds, cv.py convention; others = bootstrap CI averaged across seeds; plus across-seed std) and
-regenerates metrics.json + ROC/PR/reliability figures from a script — no hand-typed numbers.
-
-Significance of any ΔAUC is DEFERRED to the P09 stats agent; never asserted here (Rule 8).
-"""
 
 from __future__ import annotations
 
@@ -22,14 +13,10 @@ LADDER = ("radiomics", "unimodal", "late_fusion", "cross_attn")
 
 
 def _aggregate(per_seed: dict) -> dict:
-    """Collapse {seed: classification_metrics} → mean value + averaged CI + across-seed std."""
     seeds = sorted(per_seed)
     names = [k for k, v in per_seed[seeds[0]].items() if isinstance(v, dict) and "value" in v]
     agg = {}
     for m in names:
-        # TICKET-012: a single-class OOF fold yields NaN AUROC (delong_ci no longer
-        # raises). Pool only the finite seeds so one degenerate fold can't NaN out the
-        # whole rung; if ALL seeds are NaN the value stays NaN and the rung is degraded.
         vals = [per_seed[s][m]["value"] for s in seeds]
         finite = [v for v in vals if v is not None and np.isfinite(v)]
         entry = {"value": round(float(np.mean(finite)), 4) if finite else float("nan"),
@@ -41,7 +28,6 @@ def _aggregate(per_seed: dict) -> dict:
             entry["ci95"] = [round(float(np.mean([c[0] for c in cis])), 4),
                              round(float(np.mean([c[1] for c in cis])), 4)]
         agg[m] = entry
-    # Mark the rung degraded when any seed's AUROC was non-finite (single-class fold).
     per_seed_auroc = {str(s): per_seed[s]["auroc"]["value"] for s in seeds}
     n_degraded = sum(1 for v in per_seed_auroc.values()
                      if v is None or not np.isfinite(v))
@@ -55,7 +41,6 @@ def _aggregate(per_seed: dict) -> dict:
 
 
 def ablation_ladder(probs_by_rung: dict, y_true_by_seed: dict, thr=0.5) -> dict:
-    """Per rung, per seed classification_metrics → aggregated block. Rungs share the same folds."""
     table = {}
     for rung, probs_by_seed in probs_by_rung.items():
         per_seed = {s: classification_metrics(y_true_by_seed[s], probs_by_seed[s], thr, boot_seed=s)
@@ -65,7 +50,6 @@ def ablation_ladder(probs_by_rung: dict, y_true_by_seed: dict, thr=0.5) -> dict:
 
 
 def _save_figures(y, p_by_rung, out: Path) -> None:
-    """ROC + PR (all rungs) and reliability (top rung) on seed 0. PNG bytes aren't asserted."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -101,7 +85,6 @@ def _save_figures(y, p_by_rung, out: Path) -> None:
 
 
 def build_metrics_json(fixture: dict, ki67: dict, out_dir: Path, thr=0.5, figures=True) -> dict:
-    """Assemble metrics.json (byte-stable via sort_keys) + figures. The single source of numbers."""
     table = ablation_ladder(fixture["probs"], fixture["y_true"], thr)
     doc = {
         "gate": "G2/G3 (fixture)",

@@ -1,51 +1,30 @@
-# Arm 7 (Wave 3, GATED + ADR-BLOCKED) — TIL spatial-architecture organ (TIGER).
-#
-# Ledger (LOCK-1): TIL spatial-architecture CHARACTERISATION at diagnosis (TIGER). No survival
-# prediction. No cross-institution generalisation. Spatial topology ADDS to scalar sTIL — not
-# replacing it. TIGER carries survival labels — they MUST NEVER be attached as a task.
-#
-# SURVIVAL GUARD (step 0): --check-no-survival-labels asserts the TIGER feature matrix carries no
-# survival/outcome column (raise + exit 1 on any hit) before any model fit. Shared implementation:
-# wave1_eval_harness.assert_no_survival_columns.
-#
-# BLOCKED: arm 7 requires a ratified TIGER ADR in docs/adr/ before any training AND Wave 3 unlock.
-#
-# STATUS: POPULATED 2026-07-28 (Wave 3 Phase 2, CPU-only session). ADR-0013 drafted (PROPOSED, PI
-# sign-off pending). GPU cell-seg pass (Phase 6) remains OUT OF SCOPE until Gate 2 is granted.
 
 schema: pinksight.novel-heads/arm7-v1
 arm: 7
 wave: 3
-role: til-spatial-architecture-characterisation   # at-diagnosis; NEVER survival
-compute: cpu-floor-then-gpu-segment               # floor gate CPU; cell-seg pass ~$15-25 RunPod on GREENLIGHT
-model: lightgbm_on_graph_metrics                  # TIL forest/desert/niche graph topology
+role: til-spatial-architecture-characterisation
+compute: cpu-floor-then-gpu-segment
+model: lightgbm_on_graph_metrics
 populated: true
-gated_behind: wave1_or_wave2_greenlight            # SATISFIED 2026-07-28: arms 1/2/4/8 GREENLIGHT
-adr_required: docs/adr/0013-arm7-tiger-til-spatial-architecture.md   # PROPOSED 2026-07-28; PI sign-off pending
-report_keyword_guard_arm_id: arm7                  # -> wave1_eval_harness.validate_arm_report_keywords
+gated_behind: wave1_or_wave2_greenlight
+adr_required: docs/adr/0013-arm7-tiger-til-spatial-architecture.md
+report_keyword_guard_arm_id: arm7
 
-# --- Dataset (placeholder — TIGER challenge, Grand Challenge / TCIA supplement) --------------------
 datasets:
-  tiger_wsi: TBD/TIGER                       # ~195 WSI (+ 707 survival — MUST NOT be attached as a task)
-  til_annotations: TBD/tiger_til_maps        # spatial TIL maps (annotated)
+  tiger_wsi: TBD/TIGER
+  til_annotations: TBD/tiger_til_maps
 
-# --- Track-B embedding entrypoint (verified at Wave 3 entry — never hardcode) -----------------------
 trackb_entrypoint_config: configs/novel_heads/trackb_entrypoint.yaml
 
-# --- Target ----------------------------------------------------------------------------------------
-target: til_spatial_topology                # hot-spot density / neighbourhood entropy / inter-TIL distance; vs subtype or TIL-density category
+target: til_spatial_topology
 
-# --- Survival guard (LOCK-1, programmatic — step 0 before any fit) ---------------------------------
-# Case-insensitive substring match; any hit raises ValueError + exit 1. Mirrors
-# wave1_eval_harness.FORBIDDEN_SURVIVAL_PATTERNS (single source of truth is the harness constant).
 check_no_survival_labels: true
 forbidden_survival_patterns:
   [survival, os_, dfs_, pfs_, rfs_, event, censored, deceased, died, death, months_to, days_to, outcome]
 
-# --- Thresholds (plan Wave 3 arm 7 floor spec) -----------------------------------------------------
 seeds: [0, 1, 2]
-kill_threshold_stil_auroc: 0.55            # scalar sTIL AUROC <= 0.55 (TIL scoring fails) -> rethink before GPU
-greenlight_threshold_stil_auroc: 0.65      # sTIL AUROC >= 0.65 AND spatial topology >= 10% held-out gain -> authorise GPU seg
+kill_threshold_stil_auroc: 0.55
+greenlight_threshold_stil_auroc: 0.65
 greenlight_spatial_gain: 0.10
 
 ledger_guard: >

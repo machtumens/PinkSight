@@ -1,20 +1,3 @@
-"""[HEAD2-GRADE-2D-SLICE] Patient-level CV for the 2D-per-slice grade recipe (DeepRadGrade).
-
-Mirrors `train/cv.py::cross_val_imaging` (patient-level StratifiedGroupKFold(5), inner-val early stop,
-pooled-OOF DeLong CI + ECE, same metrics.json schema) so the 2D result slots into the exact same
-comparison table as the 3D null. The differences that matter for this recipe:
-
-  * inputs are 2D SLICES (SliceGradeDataset) — a patient contributes up to 8 train slices but exactly
-    ONE test slice (the supra-central slice, DeepRadGrade protocol).
-  * ***NEW slice-level leakage guard*** — grouping is by PATIENT, so we assert no `pid` has slices in
-    both the train and val slice sets of any fold. This is the leakage risk the slice representation
-    introduces and the pre-reg's critical new guard.
-  * OOF AUROC is computed at the PATIENT level: one prediction per patient (its single test slice), so
-    N in the DeLong CI is the patient count, never an inflated slice count.
-
-Same seed plumbing, same `train_model`, same DeLong/ECE metrics as the 3D harness — only the dataset
-and the split-unit assertions change.
-"""
 
 from __future__ import annotations
 
@@ -45,8 +28,6 @@ def _seed_monai(seed: int) -> None:
 def _inner_val_split(
     tr: np.ndarray, y: np.ndarray, pids: list[str], seed: int, fold: int
 ) -> tuple[np.ndarray, np.ndarray] | None:
-    """Patient-disjoint ~80/20 inner split of the training PATIENTS (for early stopping). None when the
-    fold is too small to spare a val split (tiny smoke) -> caller falls back to val=test."""
     groups = np.asarray(pids)[tr]
     _min_class = int(np.unique(y[tr], return_counts=True)[1].min()) if len(tr) else 0
     if (len(set(groups.tolist())) < N_SPLITS
@@ -59,9 +40,6 @@ def _inner_val_split(
 
 
 def _assert_slice_disjoint(ds_a: SliceGradeDataset, ds_b: SliceGradeDataset, where: str) -> None:
-    """The NEW guard: no patient's SLICES may appear in both sample sets. Reads the (pid,...) tags the
-    dataset stamps on every emitted slice, so it verifies the actual materialised samples, not the
-    intended split. A shared pid here would mean a patient's slices leaked across the fold boundary."""
     pa = {s[0] for s in ds_a.samples}
     pb = {s[0] for s in ds_b.samples}
     shared = pa & pb
@@ -79,8 +57,6 @@ def cross_val_slices(
     proc_dir: Path = Path("data/processed"),
     seeds: tuple[int, ...] = SEEDS,
 ) -> dict:
-    """items=[(pid,label)]; grouping=pids. Returns the frozen metrics.json schema dict + slice/disjoint
-    fields. One OOF prediction per patient (its supra-central test slice) -> patient-level DeLong CI."""
     pids = [p for p, _ in items]
     y = np.array([lab for _, lab in items])
     n = len(items)
@@ -101,10 +77,9 @@ def cross_val_slices(
 
     for seed in seeds:
         cv = StratifiedGroupKFold(n_splits=N_SPLITS, shuffle=True, random_state=seed)
-        oof = np.full(n, np.nan)  # one prob per PATIENT (index-aligned to items)
+        oof = np.full(n, np.nan)  
         fold_aucs = []
         for f, (tr, te) in enumerate(cv.split(np.zeros(n), y, pids)):
-            # patient-level fold disjointness (same as the 3D harness)
             if not set(np.asarray(pids)[tr]).isdisjoint(np.asarray(pids)[te]):
                 raise AssertionError("patient leaked across a CV fold — LOCK-2 violation")
 
@@ -116,7 +91,6 @@ def cross_val_slices(
             te_pairs = [items[i] for i in te]
             if inner is None:
                 tri = tr
-                # tiny fold: val=test (no honest number there, mirrors the 3D smoke fallback)
                 val_loader, val_ds = _loader(te_pairs, "test", False, False, seed, f)
                 train_loader, train_ds = _loader([items[i] for i in tri], "train", True, True, seed, f)
             else:
@@ -127,10 +101,8 @@ def cross_val_slices(
                 val_loader, val_ds = _loader(vali_pairs, "test", False, False, seed, f)
                 train_loader, train_ds = _loader([items[i] for i in tri], "train", True, True, seed, f)
 
-            # OOF test loader: exactly one slice per test patient (supra-central)
             oof_loader, oof_ds = _loader(te_pairs, "test", False, False, seed, f)
 
-            # ***NEW slice-level patient-disjoint assertions*** (the pre-reg's critical new guard)
             _assert_slice_disjoint(train_ds, val_ds, f"s{seed}f{f} train vs val")
             _assert_slice_disjoint(train_ds, oof_ds, f"s{seed}f{f} train vs test")
             if inner is not None:
@@ -146,7 +118,6 @@ def cross_val_slices(
                 pos_weight=neg / max(pos, 1.0), log_tag=f"s{seed}f{f}",
                 oof_loader=oof_loader,
             )
-            # exactly one prob per test patient (SliceGradeDataset split="test" emits one slice/patient)
             prob_by_pid = dict(zip(oof_pids, oof_probs))
             if len(prob_by_pid) != len(te):
                 raise RuntimeError(
@@ -162,7 +133,7 @@ def cross_val_slices(
         if np.isnan(oof).any():
             raise RuntimeError("OOF preds incomplete — a patient-row was never in a test fold")
         per_seed[seed] = float(np.mean(fold_aucs)) if fold_aucs else float("nan")
-        auc, lo, hi = delong_ci(y, oof)  # PATIENT-level DeLong (N = patient count, not slice count)
+        auc, lo, hi = delong_ci(y, oof)  
         pooled[seed], ci[seed] = auc, (lo, hi)
         ece_seed[seed] = ece(y, oof)
 
@@ -185,10 +156,9 @@ def cross_val_slices(
         "ece_per_seed": {str(k): round(v, 4) for k, v in ece_seed.items()},
         "ece_n_bins": 10,
         "n_dev": n,
-        "tnbc_prevalence": round(float(np.mean(y)), 4),  # here = NHG3 prevalence
+        "tnbc_prevalence": round(float(np.mean(y)), 4),  
         "n_splits": N_SPLITS,
         "seeds": list(seeds),
-        # 2D-slice-specific provenance
         "oof_unit": "patient (single supra-central slice per patient; DeLong N = patient count)",
         "train_slices_total_per_fold_mean": round(float(np.mean(total_train_slices)), 1),
         "test_slices_total_per_fold_mean": round(float(np.mean(total_test_slices)), 1),

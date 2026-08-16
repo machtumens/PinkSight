@@ -1,35 +1,23 @@
-# Arm 1 (Wave 2) — CDD-CESM iodine-uptake-signature characterisation head (novel heads, OPSI 2026).
-#
-# Ledger (LOCK-1): iodine-enhancement phenotype CHARACTERISATION at diagnosis from the CESM recombined
-# channel. Never early detection / screening. BI-RADS is a lesion-level characterisation label.
-# Extend beyond radiomics -> NEW ADR required (CESM encoder training not covered by any prior ADR).
-#
-# STATUS: DRY STUB (populated: false). Dataset path is a placeholder; the execute agent stages
-# CDD-CESM (TCIA) and flips populated -> true before the floor gate runs.
 
 schema: pinksight.novel-heads/arm1-v1
 arm: 1
 wave: 2
-role: iodine-enhancement-characterisation   # at-diagnosis; lesion-level, not screening
+role: iodine-enhancement-characterisation
 compute: cpu-zero-dollar
-model: lightgbm                             # pyradiomics features -> LightGBM
+model: lightgbm
 populated: false
 
-# --- Dataset (placeholder — TCIA CDD-CESM collection, ~326 patients / ~2050 images) ----------------
 datasets:
-  cdd_cesm_root: TBD/CDD-CESM               # recombined (high-energy + iodine) channel used for extraction
+  cdd_cesm_root: TBD/CDD-CESM
 
-# --- Target ----------------------------------------------------------------------------------------
-target: birads_ge4                          # BI-RADS >= 4 vs <= 3 (or path-confirmed malignancy); NOT subtype
+target: birads_ge4
 
-# --- Thresholds (plan Wave 2 arm 1 spec) -----------------------------------------------------------
 seeds: [0, 1, 2]
-kill_threshold_auroc: 0.52                  # AUROC <= 0.52 -> null characterisation report
-greenlight_threshold_auroc: 0.60            # AUROC >= 0.60 AND DeLong CI LB >= 0.52 -> advance
+kill_threshold_auroc: 0.52
+greenlight_threshold_auroc: 0.60
 greenlight_delong_ci_lb: 0.52
 
-# --- Dedup (LOCK-2) --------------------------------------------------------------------------------
-dedup_check: cdd_cesm_vs_duke               # CDD-CESM ∩ Duke = 0 (different TCIA collection + modality)
+dedup_check: cdd_cesm_vs_duke
 
 ledger_guard: >
   iodine-enhancement phenotype characterisation at diagnosis from the CESM recombined channel.

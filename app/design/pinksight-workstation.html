@@ -4,25 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>PinkSight — Characterisation Workstation (design playground)</title>
-<!--
-  ┌──────────────────────────────────────────────────────────────────────────────────────────┐
-  │ PinkSight desktop workstation — SINGLE-FILE DESIGN PLAYGROUND (v2, "precision instrument").  │
-  │                                                                                            │
-  │ Self-contained visual mock of the real React/Tauri app (desktop/src). All values are MOCK — │
-  │ nothing here talks to the Python sidecar. Redesign freely, then re-wire it back into the     │
-  │ real app using the "Wiring Spec" screen (last nav item) + the data-wire="…" annotations.     │
-  │                                                                                            │
-  │ CLAIM LEDGER (never violate): characterisation / localisation ONLY. Forbidden framing:       │
-  │ "early detection", "growth rate", "kinetics", "doubling time", "screening", "cross-  # allow-ledger │
-  │ institution". The dispatch picker is routing-only (never a per-organ number, never a Run     │
-  │ button). Every payload is tagged MOCK or SYNTHETIC — never a bare number shown as real.      │
-  │ Design direction: dark-luxury precision instrument · rose = the single interactive signal.  │
-  └──────────────────────────────────────────────────────────────────────────────────────────┘
--->
 <style>
-  /* ════ Tokens ═══════════════════════════════════════════════════════════════════════════════
-     Light = "daylight lab", Dark (default) = "precision instrument". Rose is the ONLY interactive
-     signal; every other hue carries semantic meaning (trust, calibration, modality provenance). */
   :root {
     --bg: 210 30% 97%; --bg-2: 213 28% 94%; --panel: 0 0% 100%;
     --surface: 0 0% 100%; --surface-2: 214 28% 96%; --inset: 214 26% 93%;
@@ -60,7 +42,6 @@
     font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased; font-size: 14px; line-height: 1.5; letter-spacing: -0.005em;
   }
-  /* Atmosphere: faint rose aurora top-left + a whisper of depth. Never loud. */
   body::before {
     content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
     background:
@@ -75,7 +56,6 @@
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: hsl(var(--border-strong)); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
 
-  /* ════ Shell ════════════════════════════════════════════════════════════════════════════════ */
   .app { position: relative; z-index: 1; display: grid; grid-template-columns: 244px 1fr; height: 100vh; }
   .sidebar {
     display: flex; flex-direction: column; gap: 3px; padding: 20px 14px;
@@ -118,7 +98,6 @@
   .eyebrow { font-size: 10.5px; letter-spacing: .14em; font-weight: 700; text-transform: uppercase;
              color: hsl(var(--primary-soft)); margin-bottom: 8px; }
 
-  /* ════ Primitives ═══════════════════════════════════════════════════════════════════════════ */
   .card {
     background: linear-gradient(180deg, hsl(var(--surface)), hsl(var(--surface) / .6));
     border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
@@ -166,7 +145,6 @@
   tbody tr:last-child td { border-bottom: 0; }
   tr.clickable { transition: background .12s; } tr.clickable:hover { background: hsl(var(--primary) / .07); cursor: pointer; }
 
-  /* ── Uncertainty bar (the trust primitive) ── */
   .ubar { padding: 7px 0; }
   .ubar .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; margin-bottom: 7px; }
   .ubar .track { position: relative; height: 9px; border-radius: 999px; background: hsl(var(--inset)); box-shadow: inset 0 0 0 1px hsl(var(--border)); }
@@ -175,7 +153,6 @@
   .ubar .pt { position: absolute; top: 50%; height: 15px; width: 2.5px; border-radius: 2px;
     background: hsl(var(--fg)); transform: translate(-50%, -50%); box-shadow: 0 0 8px hsl(var(--fg) / .5); }
 
-  /* ── Modality fusion bars (diverging, signed) ── */
   .mbar { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 4px 0; }
   .mbar .swatch { width: 10px; height: 10px; border-radius: 999px; flex: none; box-shadow: 0 0 8px currentColor; }
   .mbar .mname { width: 68px; flex: none; text-transform: capitalize; }
@@ -191,13 +168,11 @@
   .swatch.genomic { background: hsl(var(--mod-genomic)); color: hsl(var(--mod-genomic)); }
   .absent { opacity: .3; box-shadow: none !important; }
 
-  /* ── Calibration meter ── */
   .cmeter .track { position: relative; height: 9px; border-radius: 999px; background: hsl(var(--inset)); box-shadow: inset 0 0 0 1px hsl(var(--border)); }
   .cmeter .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
   .cmeter .tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: hsl(var(--fg) / .35); }
   .cmeter .scale { display: flex; justify-content: space-between; font-size: 10px; margin-top: 6px; color: hsl(var(--fg-faint)); }
 
-  /* ── Bento ── */
   .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   .bento .hero { grid-column: span 2; grid-row: span 2; }
   .bento .wide { grid-column: 1 / -1; }
@@ -209,17 +184,14 @@
   .gapbar { height: 6px; border-radius: 99px; background: hsl(var(--inset)); margin-top: 16px; position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px hsl(var(--border)); }
   .gapbar i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; display: block; }
 
-  /* ── Study viewport (instrument HUD) ── */
   .viewer { display: grid; grid-template-columns: 1fr 396px; height: 100vh; }
   .viewport { position: relative; display: flex; flex-direction: column; background: radial-gradient(120% 90% at 50% 30%, #0b0f18, #04060b); }
   .viewport .topbar { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px;
     color: rgba(255,255,255,.85); font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.07); background: rgba(0,0,0,.2); z-index: 3; }
   .canvas-wrap { position: relative; flex: 1; display: grid; place-items: center; padding: 24px; overflow: hidden; }
-  /* faint dot-grid backdrop for the "acquisition" feel */
   .canvas-wrap::before { content: ""; position: absolute; inset: 0;
     background-image: radial-gradient(hsl(var(--grid-line) / .10) 1px, transparent 1px); background-size: 22px 22px; }
   .canvas-wrap canvas { position: relative; max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 20px 60px -20px #000; }
-  /* scanline + vignette */
   .scan { position: absolute; inset: 0; pointer-events: none; border-radius: 8px;
     background: linear-gradient(rgba(255,255,255,.05), transparent 3px); background-size: 100% 4px; opacity: .35; mix-blend-mode: overlay; }
   .vignette { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px 20px rgba(0,0,0,.6); }
@@ -251,13 +223,11 @@
     transition: left .18s cubic-bezier(.16,1,.3,1); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
   .switch.on .knob { left: 19px; }
 
-  /* ── Report as a signed document ── */
   .doc { max-width: 740px; margin: 0 auto; }
   .stamp { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 8px; font-size: 11.5px; font-weight: 600;
     border: 1px dashed hsl(var(--border-strong)); color: hsl(var(--fg-dim)); background: hsl(var(--inset) / .5); }
   .ledger-note { border-left: 3px solid hsl(var(--primary)); background: hsl(var(--primary) / .07); padding: 13px 15px; border-radius: 10px; font-size: 12.5px; color: hsl(var(--fg-dim)); }
 
-  /* ── Wiring spec ── */
   .spec-note { border-left: 3px solid hsl(var(--primary)); background: hsl(var(--primary) / .08); padding: 13px 15px; border-radius: 10px; margin-bottom: 20px; font-size: 13px; }
   code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; background: hsl(var(--inset)); padding: 2px 6px; border-radius: 5px; box-shadow: inset 0 0 0 1px hsl(var(--border)); }
   .forbidden { color: hsl(var(--bad)); font-weight: 600; } .allowed { color: hsl(var(--good)); font-weight: 600; }
@@ -266,7 +236,6 @@
 </head>
 <body>
 <div class="app">
-  <!-- ════ Sidebar ════════════════════════════════════════════════════════════════════════════ -->
   <aside class="sidebar">
     <div class="brand">
       <div class="mark">◐</div>
@@ -284,7 +253,6 @@
   </aside>
 
   <main class="main">
-    <!-- ════ Dashboard (bento) ════════════════════════════════════════════════════════════════ -->
     <section class="screen active" id="dashboard">
       <div class="pad">
         <div class="page-head">
@@ -294,7 +262,6 @@
         </div>
 
         <div class="bento">
-          <!-- Hero = the honest ceiling (the product's ethos, led with, not buried) -->
           <div class="card hero">
             <div class="metric-hero">
               <h3>Honest Performance · subtype AUROC</h3>
@@ -332,7 +299,6 @@
             </div>
           </div>
 
-          <!-- Claim ledger as a distinct "constitution" band -->
           <div class="card wide" style="background:linear-gradient(180deg,hsl(var(--surface)),hsl(var(--inset) / .4))">
             <div class="row" style="align-items:baseline;margin-bottom:14px">
               <h3 style="margin:0">Claim Ledger — the constitution</h3>
@@ -342,7 +308,7 @@
               <div><div class="tiny allowed" style="letter-spacing:.08em;margin-bottom:7px">✓ ALLOWED</div>
                 <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>Subtype characterisation</li><li>Ki-67 stratification at diagnosis</li><li>Explainable multimodal fusion</li></ul></div>
               <div><div class="tiny forbidden" style="letter-spacing:.08em;margin-bottom:7px">✕ FORBIDDEN</div>
-                <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>Early / pre-detection</li><li>Growth-rate / kinetics</li><li>Cross-institution generalisation</li></ul></div><!-- # allow-ledger -->
+                <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>Early / pre-detection</li><li>Growth-rate / kinetics</li><li>Cross-institution generalisation</li></ul></div>
               <div><div class="tiny" style="letter-spacing:.08em;margin-bottom:7px;color:hsl(var(--fg-dim))">✎ WORDING</div>
                 <ul class="tiny dim" style="list-style:none;line-height:1.8"><li>"characterisation", not "detection"</li><li>"Ki-67 / aggressiveness", not "growth rate"</li></ul></div>
             </div>
@@ -352,7 +318,6 @@
       </div>
     </section>
 
-    <!-- ════ Patients ═══════════════════════════════════════════════════════════════════════════ -->
     <section class="screen" id="patients">
       <div class="pad">
         <div class="page-head"><div class="eyebrow">Cohort</div><h1>Patients</h1><p>Click a study to open the viewer.</p></div>
@@ -369,7 +334,6 @@
       </div>
     </section>
 
-    <!-- ════ Study Viewer ═══════════════════════════════════════════════════════════════════════ -->
     <section class="screen" id="viewer">
       <div class="viewer">
         <div class="viewport">
@@ -395,7 +359,6 @@
         </div>
 
         <aside class="rail">
-          <!-- Dispatch picker: routing-decision ONLY. Never a per-organ number, never a Run button. -->
           <div class="card">
             <h3>Cohort / modality routing</h3>
             <div class="stack">
@@ -432,7 +395,6 @@
       </div>
     </section>
 
-    <!-- ════ Report (signed document) ═══════════════════════════════════════════════════════════ -->
     <section class="screen" id="report">
       <div class="pad" style="max-width:none">
         <div class="doc">
@@ -485,7 +447,6 @@
       </div>
     </section>
 
-    <!-- ════ Settings ═══════════════════════════════════════════════════════════════════════════ -->
     <section class="screen" id="settings">
       <div class="pad" style="max-width:600px">
         <div class="page-head"><div class="eyebrow">System</div><h1>Settings</h1></div>
@@ -502,7 +463,6 @@
       </div>
     </section>
 
-    <!-- ════ Wiring Spec ════════════════════════════════════════════════════════════════════════ -->
     <section class="screen" id="wiring">
       <div class="pad">
         <div class="page-head"><div class="eyebrow">For redesign</div><h1>Wiring Spec</h1>
@@ -567,7 +527,6 @@
 </div>
 
 <script>
-  /* ── MOCK data (design playground — swap for the live /infer payload; see Wiring Spec) ───── */
   const MOCK = {
     modalities: [
       { modality: "clinical", present: true, contribution: 0.135 },
@@ -581,7 +540,6 @@
   const MODALITIES = ["mri","clinical","wsi","genomics","purity","hrd","proteomic","cesm","ffdm","dce","tabular","recurrence"];
   const COHORT_DEFAULTS = { duke:["mri","clinical"], tcga_brca:["wsi","genomics"], metabric:["purity"],
     cptac_brca:["proteomic"], cdd_cesm:["cesm"], cmmd:["ffdm"], fastmri_nyu:["dce"], track_c:["tabular"] };
-  // Faithful mirror of scripts/pinksight_dispatch.py COHORT_HARNESS_REGISTRY (exact frozenset match).
   const REGISTRY = {
     "duke|clinical,mri":"scripts/train_g3_hierarchical.py",
     "tcga_brca|wsi":"scripts/trackb_mil_cv.py",
@@ -601,7 +559,6 @@
       : { harnessScript: null, status: "NOT WIRED — confirm path or backlog", note: "no harness owns this (cohort, modalities) tuple" };
   }
 
-  /* ── Router ── */
   function go(route) {
     document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === route));
     document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.route === route));
@@ -610,7 +567,6 @@
   }
   document.querySelectorAll(".nav-item").forEach(n => n.addEventListener("click", () => go(n.dataset.route)));
 
-  /* ── Renderers (shared by rail + report) ── */
   const pct = n => Math.round(n * 100) + "%";
   function ubar(x) {
     return `<div class="ubar"><div class="lab"><span>${x.label}</span>
@@ -632,7 +588,6 @@
     }).join("");
   }
 
-  /* ── Study viewer: phantom, phase, XAI, dispatch, run flow ── */
   let phase = 2, xai = true;
   function drawPhantom() {
     const cv = document.getElementById("phantom"), ctx = cv.getContext("2d");
@@ -683,7 +638,6 @@
     document.getElementById("railFusion").innerHTML = fusionBars(MOCK.modalities);
   }
 
-  /* ── Settings: theme + mode ── */
   function toggleTheme(){
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
     document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
@@ -696,7 +650,6 @@
     document.getElementById("modeLabel").textContent = "Mode: " + (live ? "Synthetic (live)" : "Mock");
   }
 
-  /* ── Init ── */
   document.getElementById("repSubtype").innerHTML = ubar(MOCK.subtype) + ubar(MOCK.grade);
   document.getElementById("repFusion").innerHTML = fusionBars(MOCK.modalities);
   renderMods();

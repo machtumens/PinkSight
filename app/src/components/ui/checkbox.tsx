@@ -1,8 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Minimal native checkbox (dependency-free, house style — no @radix-ui). `accent-primary` tints the
-// native control with the theme accent so it reads as part of the design system.
 export type CheckboxProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(

@@ -1,4 +1,3 @@
-"""P10 XAI harness on the synthetic fixture: non-circular IoU + randomization sanity + SHAP."""
 
 import pytest
 
@@ -24,8 +23,8 @@ def test_iou_vs_independent_reference_meets_bar():
     fx = saliency_mask_fixture()
     score = iou(fx["saliency"], fx["reference_mask"])
     assert score >= 0.30, f"IoU {score} below the LOCK-6 bar"
-    assert pointing_game(fx["saliency"], fx["reference_mask"])  # peak lands in the reference
-    assert box_hit(fx["saliency"], fx["box"])                   # box-hit fallback also passes
+    assert pointing_game(fx["saliency"], fx["reference_mask"])  
+    assert box_hit(fx["saliency"], fx["box"])                   
 
 
 def test_randomization_flips_saliency():
@@ -48,7 +47,6 @@ def test_grad_cam_drops_under_weight_randomization():
     rnd = randomize_weights(model, seed=1)
     cam_rnd = grad_cam_3d(rnd, vol, rnd[2])
     res = randomization_test(cam, cam_rnd)
-    # a real trained-vs-random pair must lose >50% of ROI mass; record the number either way
     assert res["roi_mass_orig"] >= res["roi_mass_random"], res
 
 
@@ -56,21 +54,17 @@ def test_clinical_shap_additivity():
     fx = clinical_model_fixture()
     values, base = clinical_shap(fx["model"], fx["X"], fx["background"])
     assert values.shape == fx["X"].shape
-    # SHAP efficiency: base + sum(phi) == model margin (exact for a linear model)
     margin = fx["model"].decision_function(fx["X"])
     assert np.allclose(base + values.sum(axis=1), margin, atol=1e-6)
 
 
 def test_clinical_shap_guards_missing_cat_level():
-    """TICKET-016: a ≤100-row SHAP background that misses a rare categorical level must be caught
-    when the true cat_cardinalities are known — otherwise cardinality is silently undercounted and
-    the explanation undershoots. Fixture/synthetic: no trained network needed."""
     import torch
     from torch import nn
 
     from pinksight.xai.saliency import clinical_shap
 
-    n_num, cards = 2, [3]  # one categorical with 3 true levels {0,1,2}
+    n_num, cards = 2, [3]  
 
     class _Tiny(nn.Module):
         def __init__(self):
@@ -84,7 +78,7 @@ def test_clinical_shap_guards_missing_cat_level():
     model = _Tiny()
     rng = np.random.default_rng(0)
     bg_num = rng.normal(0, 1, (12, n_num))
-    bg_cat = np.array([[0], [1]] * 6, dtype=float)  # level 2 absent → undercounts to 2, not 3
+    bg_cat = np.array([[0], [1]] * 6, dtype=float)  
     background_X = np.column_stack([bg_num, bg_cat])
     X = background_X[:2]
 

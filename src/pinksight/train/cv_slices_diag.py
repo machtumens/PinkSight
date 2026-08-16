@@ -1,11 +1,3 @@
-"""[HEAD2-GRADE-2D-SLICE DIAGNOSTIC] Patient-level CV for the full-iso GT/PRED grade diagnostic.
-
-Byte-for-byte the same protocol as `train.cv_slices.cross_val_slices` (patient-level
-StratifiedGroupKFold(5), patient-disjoint inner-val early stop, slice-level patient-disjoint asserts,
-one supra-central OOF prediction per patient, patient-level DeLong CI + ECE, frozen metrics schema).
-The ONLY difference: the dataset is `DiagSliceGradeDataset(source=...)` reading the full-iso cache,
-so the SAME harness runs ARM GT (source="gt") and ARM PRED (source="pred").
-"""
 
 from __future__ import annotations
 
@@ -66,8 +58,6 @@ def cross_val_slices_diag(
     proc_dir: Path = FULLN_DIR,
     seeds: tuple[int, ...] = SEEDS,
 ) -> dict:
-    """source in {"gt","pred"}. One OOF prediction per patient -> patient-level DeLong CI. Same schema
-    as cv_slices.cross_val_slices plus a `crop_source` field."""
     pids = [p for p, _ in items]
     y = np.array([lab for _, lab in items])
     n = len(items)
@@ -165,7 +155,7 @@ def cross_val_slices_diag(
         "ece_per_seed": {str(k): round(v, 4) for k, v in ece_seed.items()},
         "ece_n_bins": 10,
         "n_dev": n,
-        "tnbc_prevalence": round(float(np.mean(y)), 4),  # here = NHG3 prevalence
+        "tnbc_prevalence": round(float(np.mean(y)), 4),  
         "n_splits": N_SPLITS,
         "seeds": list(seeds),
         "crop_source": source,

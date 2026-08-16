@@ -1,10 +1,3 @@
-"""Track B asset readiness (Tier 1, skip-if-absent): the WSI + genomics inputs load and have the
-right shape contract — not stubs.
-
-Track B is stretch/gated, and data/ is gitignored, so every test SKIPS when its asset is missing
-(CI, fresh clone) and only runs where the files were actually pulled. No model instantiation, no
-GPU, no number — just "does the artifact load and is it the shape we'll consume".
-"""
 
 from pathlib import Path
 
@@ -19,7 +12,7 @@ _TITAN = Path("data/pathology/features/TCGA_TITAN_features.pkl")
 _TCGA = Path("data/genomics/tcga/brca_tcga_pan_can_atlas_2018/data_mrna_seq_v2_rsem.txt")
 _METABRIC = Path("data/genomics/metabric/brca_metabric/data_mrna_illumina_microarray.txt")
 
-_TITAN_DIM = 768  # TITAN slide-embedding dimensionality
+_TITAN_DIM = 768  
 
 
 def _load_state_dict(path):
@@ -63,7 +56,7 @@ def test_titan_features_are_slide_vectors():
 def test_expression_matrix_is_genes_by_samples(path, min_samples):
     if not path.exists():
         pytest.skip(f"{path.name} not pulled (data/ gitignored)")
-    head = pd.read_csv(path, sep="\t", nrows=5)  # header only — don't load 150 MB
+    head = pd.read_csv(path, sep="\t", nrows=5)  
     assert "Hugo_Symbol" in head.columns, "expression matrix not Hugo-keyed"
-    n_samples = len(head.columns) - 2  # Hugo_Symbol + Entrez_Gene_Id
+    n_samples = len(head.columns) - 2  
     assert n_samples >= min_samples, f"only {n_samples} sample columns — truncated download?"

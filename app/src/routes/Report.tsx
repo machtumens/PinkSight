@@ -7,15 +7,10 @@ import { UncertaintyBar } from "@/components/UncertaintyBar";
 import { ModalityBars } from "@/components/ModalityBars";
 import { MOCK_REPORT, type CharacterisationReport } from "@/lib/inference";
 
-// A report the clinician reviews and signs — the audit-bearing artifact, not a raw dump. Every model
-// output appears inside its uncertainty band; every modality's fusion weight is shown; the imaging
-// ceiling and claim ledger are stated, never elided.
 export default function Report() {
   const { id = "DUKE-0421" } = useParams();
   const nav = useNavigate();
   const location = useLocation();
-  // Ride-along wire: render the report StudyViewer produced (passed via nav state). Direct navigation
-  // / refresh yields null state -> fall back to the (correctly MOCK-tagged) fixture.
   const r = (location.state as { report?: CharacterisationReport } | null)?.report ?? MOCK_REPORT;
   const synthetic = r.provenance?.datasetTag?.startsWith("SYNTHETIC") ?? false;
 
@@ -42,7 +37,6 @@ export default function Report() {
       </div>
 
       <div className="space-y-4">
-        {/* Characterisation — never a lone number; always inside its band */}
         <Card>
           <CardHeader><CardTitle>Characterisation</CardTitle></CardHeader>
           <CardContent>
@@ -63,7 +57,6 @@ export default function Report() {
           </CardContent>
         </Card>
 
-        {/* Cross-attention fusion — signed per-modality contributions */}
         <Card>
           <CardHeader><CardTitle>Cross-attention fusion</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -74,7 +67,6 @@ export default function Report() {
           </CardContent>
         </Card>
 
-        {/* Explainability (XAI) — saliency agreement + sanity checks */}
         {r.xai && (
           <Card>
             <CardHeader><CardTitle>Explainability (XAI)</CardTitle></CardHeader>
@@ -90,7 +82,6 @@ export default function Report() {
           </Card>
         )}
 
-        {/* Reliability — calibration meter with its thresholds */}
         <Card>
           <CardHeader><CardTitle>Reliability</CardTitle></CardHeader>
           <CardContent>
@@ -98,14 +89,12 @@ export default function Report() {
           </CardContent>
         </Card>
 
-        {/* Routing (present when a cohort/modality selection produced one) */}
         {r.dispatch && (
           <Card>
             <CardHeader><CardTitle>Routing</CardTitle></CardHeader>
             <CardContent className="space-y-1 text-xs text-muted-foreground">
               <Row k="Harness">{r.dispatch.harnessScript ?? "—"}</Row>
               <Row k="Status">{r.dispatch.status}</Row>
-              {/* surfaced verbatim, never summarized away — the routing-only contract */}
               <div className="tnum">cross_cohort_gradient: false</div>
               <p>{r.dispatch.note}</p>
               <p>No live prediction available for this organ yet — routing decision only.</p>
@@ -113,7 +102,6 @@ export default function Report() {
           </Card>
         )}
 
-        {/* Reproducibility */}
         <Card>
           <CardHeader><CardTitle>Reproducibility</CardTitle></CardHeader>
           <CardContent className="space-y-1 text-xs tnum text-muted-foreground">
@@ -145,8 +133,6 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   );
 }
 
-// One XAI metric: a number (with an optional good-threshold), a boolean pass/fail, or n/a when the
-// pipeline did not compute it (e.g. offline mock / random-init encoder).
 function XaiRow({
   k,
   v,
@@ -174,7 +160,6 @@ function XaiRow({
   );
 }
 
-// ECE on a 0..0.15 scale with the good (≤0.05) and acceptable (≤0.10) thresholds ticked.
 function CalibrationMeter({ ece, band }: { ece: number; band: "good" | "acceptable" | "poor" }) {
   const SCALE = 0.15;
   const pos = Math.min(1, ece / SCALE);

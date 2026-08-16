@@ -1,4 +1,3 @@
-"""P09 statistics harness — paired bootstrap ΔAUC + DeLong across folds/seeds + power/MDE."""
 
 from pinksight.stats.compare import paired_bootstrap_delta_auc, stats_report
 from pinksight.stats.temperature import (

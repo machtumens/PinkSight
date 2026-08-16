@@ -1,30 +1,3 @@
-"""Track C — public-benchmark tabular-risk ENSEMBLE companion-panel router (ADR-0010, Scope C).
-
-ZERO gradient, inference-time routing ONLY. This is a THIN wrapper that selects one of Track C's
-standalone, own-cohort demo pipelines; it trains nothing, imports no deep-learning framework, holds
-no parameters, and never fuses anything.
-
-ADR-0010 FRAMING GUARD (path-scoped LOCK-1 amendment — Scope C; verbatim in spirit):
-  Track C = the Coimbra / BCSC / METABRIC public-benchmark tabular suite, admitted as an ENSEMBLE
-  companion panel (ADR-0006 standalone-organ family). LOCK-1 is PATH-SCOPE-amended for Track-C
-  artifacts ONLY (explore/tabular_risk/ + reports/**/track_c*): within Track-C artifacts the
-  otherwise-FORBIDDEN framings early/pre-detection (Coimbra), incidence/screening-population risk
-  (BCSC) and prognosis/survival (METABRIC) are EXEMPTED and reported per-cohort as independent public
-  benchmarks. This is an ENSEMBLE (the four cohorts share ZERO patients / zero shared patients), so it
-  is physically NOT cross-attention fusion — "fusion" / "integrated into the architecture" are BANNED
-  words for Track C; it is NEVER fused into the Duke imaging encoder. Inference-time routing only, no
-  cross-cohort gradient.
-  What stays FORBIDDEN on ALL tracks (incl. Track C): growth-rate / tumour-kinetics / doubling-time;
-  clinical-trial-grade FP/FN reduction; cross-institution generalisation / transfer. Track A (Duke)
-  keeps un-amended LOCK-1 — no detection/incidence framing may bleed onto the Duke headline.
-
-The four Track-C cohorts are patient-disjoint public benchmarks; routing them through one wrapper
-returns a demo path, never a comparison and never a cross-cohort number.
-
-Run:  .venv/bin/python scripts/track_c_tabular_panel.py --selfcheck
-      .venv/bin/python scripts/track_c_tabular_panel.py --panel coimbra          # routing message, exit 0
-      .venv/bin/python scripts/track_c_tabular_panel.py --panel coimbra --run    # exec the demo (sandbox venv)
-"""
 
 from __future__ import annotations
 
@@ -33,25 +6,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The untracked ADR-0010 sandbox that owns the standalone panel pipelines (gitignored; absent on a
-# clean checkout). This wrapper routes to it but does not depend on it existing.
 _SANDBOX = Path("explore/tabular_risk")
 _SANDBOX_VENV = _SANDBOX / ".venv" / "bin" / "python"
 
-# Panel -> its standalone demo FILENAME inside the sandbox. selfcheck asserts these NAMES are correct
-# (not that they exist on disk — the sandbox is untracked). Each panel is a separately-trained,
-# own-cohort ENSEMBLE member; there is no shared parameter across panels.
 _PANEL_DEMOS: dict[str, str] = {
-    "coimbra": "demo_coimbra.py",    # M1 — Breast Cancer Coimbra (UCI): metabolic/inflammatory host-state
-    "bcsc": "demo_bcsc.py",          # M2 — BCSC: calibrated incidence risk + fairness subgroups
-    "metabric": "demo_metabric.py",  # M3 — METABRIC: calibrated 5-yr overall-survival prognosis
+    "coimbra": "demo_coimbra.py",    
+    "bcsc": "demo_bcsc.py",          
+    "metabric": "demo_metabric.py",  
 }
 
 
 def selfcheck() -> int:
-    """Assert the panel->demo routing map is well-formed (correct names), with NO data and NO sandbox
-    dependency. Imports no training framework; runs no panel; returns 0.
-    """
     assert set(_PANEL_DEMOS) == {"coimbra", "bcsc", "metabric"}, (
         "Track-C panel set drifted from the ADR-0010 companion panel (Coimbra/BCSC/METABRIC)"
     )
@@ -69,15 +34,6 @@ def selfcheck() -> int:
 
 
 def route_panel(panel: str, run: bool) -> int:
-    """Resolve a panel to its sandbox demo.
-
-    Sandbox ABSENT (clean checkout)  -> print a clear 'not present' message, exit 0 (never raises,
-                                        never fabricates a result).
-    Sandbox PRESENT, no --run         -> print a routing message naming the exact demo + reproduction
-                                        command, exit 0.
-    Sandbox PRESENT, --run            -> exec the demo through the sandbox's own venv, propagate its
-                                        exit code.
-    """
     demo_rel = _PANEL_DEMOS[panel]
     demo_path = _SANDBOX / demo_rel
 

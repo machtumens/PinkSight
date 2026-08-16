@@ -1,29 +1,3 @@
-"""fastMRI-NYU preprocessing (ADR-0016): DICOM -> per-patient DCE cube cache + train-only Nyul.
-
-Disk-safe by construction: the two DCM tars are ~44 GB + ~19 GB uncompressed (63 GB) but only ~74 GB
-is free, so we extract ONE tar at a time, cache each patient's small resized cube, then delete that
-tar's raw extraction before touching the next. Peak raw-on-disk ≈ one 44 GB tar. Resumable: a patient
-whose work cube already exists is skipped.
-
-Pipeline per patient (NYU-only; no Duke):
-    frame-grouped DCE phases (pre first)  ->  trilinear resize to a fixed CUBE (channels = phases)
-    ->  work cube  data/fastmri_work/{pid}.npy  (pre-Nyul, (C, S, S, S) float32)
-Then, ONCE all work cubes exist:
-    fit Nyul standard histogram on TRAIN-fold pre-contrast (channel 0) ONLY (LOCK-2)
-    ->  configs/nyul_fastmri_nyu_v1.npy
-    apply Nyul per channel  ->  processed cube  data/fastmri_processed_nyu/{pid}.npy
-
-Deviations from the Duke LOCK-3 chain (within blast radius; documented in the task REPORT):
-  * N4 bias correction DROPPED — full-res N4 on 300*4 DCE volumes is ~tens of hours on $0-local; a
-    whole-volume characterisation CNN tolerates residual bias (Nyul + per-channel z-norm normalize).
-  * No lesion-ROI crop — NYU ships no annotation boxes / masks; the encoder eats the whole breast cube.
-  * resample_iso folded into the cube resize (native grid is already ~1mm-iso: (1.0,1.0,1.1)).
-The load-bearing LOCK-2 guard (Nyul fit on TRAIN only) is RETAINED.
-
-    PYTHONPATH=src .venv/bin/python scripts/preprocess_fastmri_nyu.py                 # full 300
-    PYTHONPATH=src .venv/bin/python scripts/preprocess_fastmri_nyu.py --limit 8       # smoke subset
-    PYTHONPATH=src .venv/bin/python scripts/preprocess_fastmri_nyu.py --nyul-only     # (re)fit+apply Nyul
-"""
 
 from __future__ import annotations
 
@@ -55,16 +29,14 @@ NYUL = Path("configs/nyul_fastmri_nyu_v1.npy")
 SHA_FILE = DATA / "SHA256"
 TARS = {
     "fastMRI_breast_IDS_001_150_DCM.tar.gz": range(1, 151),
-    # ranges overlap at 150 by design: whichever archive actually holds patient 150 wins; the other
-    # attempt is a harmless cache-hit / caught-WARN. Closes the archive-naming boundary ambiguity.
     "fastMRI_breast_IDS_150_300_DCM.tar.gz": range(150, 301),
 }
-CUBE = 96  # cached cube edge (training may resize down for VRAM)
-MAX_PHASES = 4  # fastMRI breast DCE ships 4 frames (pre + 3 post) — cap for a fixed channel count
+CUBE = 96  
+MAX_PHASES = 4  
 
 
 def log(msg: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)  # noqa: T201
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)  
 
 
 def sha256(path: Path, buf: int = 1 << 20) -> str:
@@ -94,17 +66,16 @@ def verify_tar(name: str, exp: dict[str, str]) -> None:
 
 
 def _resize_cube(vol_rcs_channels: list[np.ndarray], cube: int) -> np.ndarray:
-    """Stack per-phase (R,C,S) arrays -> (C, R, C, S), trilinear-resize to (C, cube, cube, cube)."""
     from monai.transforms import Resize
 
-    x = np.stack(vol_rcs_channels, axis=0).astype(np.float32)  # (C, R, C, S)
+    x = np.stack(vol_rcs_channels, axis=0).astype(np.float32)  
     resize = Resize(spatial_size=(cube, cube, cube), mode="trilinear", align_corners=False)
     return np.ascontiguousarray(resize(x), dtype=np.float32)
 
 
 def build_work_cube(pid: str, extract_root: Path, cube: int) -> np.ndarray:
-    scan_dir = find_scan_dir(extract_root, pid)  # de-dups repeats (lowest scan index)
-    phases = load_dce_phases(scan_dir, max_phases=MAX_PHASES)  # pre first
+    scan_dir = find_scan_dir(extract_root, pid)  
+    phases = load_dce_phases(scan_dir, max_phases=MAX_PHASES)  
     return _resize_cube([to_rcs(p) for p in phases], cube)
 
 
@@ -125,7 +96,6 @@ def process_all(pids: list[str], cube: int, limit: int | None) -> None:
         tar_pids = [p for p in want if int(p.split("_")[-1]) in id_range]
         if not tar_pids:
             continue
-        # skip whole tar if every wanted cube already cached (resumable)
         if all((WORK / f"{p}.npy").exists() for p in tar_pids):
             log(f"  all {len(tar_pids)} cubes for {name} already cached — skipping extract")
             done_total += len(tar_pids)
@@ -138,13 +108,11 @@ def process_all(pids: list[str], cube: int, limit: int | None) -> None:
                 if out.exists():
                     continue
                 if pid in quarantine:
-                    # cache the cube anyway (H6/deferred could use it) BUT it is never in an H-char/H5
-                    # item list — the loader-level assert_no_normals is the interlock. Kept for parity.
                     skipped_norm += 1
                 try:
                     cube_arr = build_work_cube(pid, root, cube)
                     np.save(out, cube_arr)
-                except Exception as e:  # noqa: BLE001 — one bad patient must not kill a detached run
+                except Exception as e:  
                     log(f"    WARN {pid}: {type(e).__name__}: {str(e)[:120]}")
                     continue
                 done_total += 1
@@ -157,7 +125,6 @@ def process_all(pids: list[str], cube: int, limit: int | None) -> None:
 
 
 def fit_and_apply_nyul(limit: int | None) -> None:
-    """Fit Nyul on TRAIN pre-contrast (channel 0) ONLY (LOCK-2), then apply per channel -> processed."""
     from pinksight.data.preprocess import _apply_nyul, fit_nyul
 
     df = load_labels()
@@ -167,13 +134,8 @@ def fit_and_apply_nyul(limit: int | None) -> None:
     work = sorted(WORK.glob("*.npy"))
     if limit:
         work = work[:limit]
-    # LOCK-2: fit ONLY on train-fold, non-quarantined cubes.
     fit_paths = [p for p in work if p.stem in train_pids and p.stem not in quarantine]
     fit_pids = {p.stem for p in fit_paths}
-    # LOCK-2 HARD GATE (ADR-0016 Step 0): the Nyul fit must consume ZERO test-fold IDs. A preprocessing
-    # statistic (landmarks) fit on ANY test patient leaks the sealed-50 and inflates the reported AUROC.
-    # The filter above already excludes test IDs; this assert PROVES it mechanically (not honor-system).
-    # If it cannot hold, the run is BLOCKED rather than producing a leaky number.
     leaked_test = sorted(fit_pids & test_pids)
     if leaked_test:
         raise AssertionError(
@@ -195,7 +157,7 @@ def fit_and_apply_nyul(limit: int | None) -> None:
     PROC.mkdir(parents=True, exist_ok=True)
     n = 0
     for p in work:
-        cube = np.load(p)  # (C, S, S, S)
+        cube = np.load(p)  
         out = np.stack([_apply_nyul(nyul, cube[c]) for c in range(cube.shape[0])], axis=0)
         np.save(PROC / p.name, out.astype(np.float32))
         n += 1

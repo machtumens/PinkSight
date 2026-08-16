@@ -1,4 +1,3 @@
-"""P08 eval harness on the synthetic fixture: CIs on every metric, byte-stable metrics.json."""
 
 import pytest
 
@@ -28,7 +27,7 @@ def test_every_classification_metric_has_a_ci():
 def test_ki67_metrics_have_cis_and_correlate():
     k = ki67_fixture()
     m = ki67_metrics(k["y_true"], k["pred"], k["thresh"])
-    assert m["pearson_r"]["value"] >= 0.40  # LOCK-6 minimum, by construction of the fixture
+    assert m["pearson_r"]["value"] >= 0.40  
     for name in ("mae", "pearson_r", "spearman_rho"):
         lo, hi = m[name]["ci95"]
         assert lo <= m[name]["value"] <= hi
@@ -43,18 +42,13 @@ def test_ablation_ladder_is_ordered(tmp_path):
 
 
 def test_classification_metrics_single_class_degrades_not_raises():
-    # TICKET-012: a single-class OOF fold (all Luminal or all TNBC) has no measurable
-    # AUROC. classification_metrics must return NaN AUROC instead of raising, so the
-    # ablation call path surfaces a clear degraded result rather than an opaque crash.
     for y in (np.zeros(12, int), np.ones(12, int)):
         p = np.random.default_rng(0).random(12)
-        m = classification_metrics(y, p)  # must not raise
+        m = classification_metrics(y, p)  
         assert np.isnan(m["auroc"]["value"])
 
 
 def test_aggregate_over_mixed_folds_degrades_gracefully():
-    # TICKET-012: _aggregate must pool the folds that DO have both classes and mark the
-    # rung degraded — one single-class (NaN AUROC) seed must not crash or NaN out the whole rung.
     from pinksight.eval.ablation import _aggregate
 
     rng = np.random.default_rng(1)
@@ -64,9 +58,9 @@ def test_aggregate_over_mixed_folds_degrades_gracefully():
     agg = _aggregate({0: both, 1: single, 2: both})
 
     assert agg.get("degraded") is True
-    assert "1/3" in agg["note"] and "single-class" in agg["note"]  # one degraded seed of three
-    assert np.isfinite(agg["auroc"]["value"])  # pooled from the two both-class seeds
-    assert np.isnan(single["auroc"]["value"])  # the degenerate seed contributed NaN
+    assert "1/3" in agg["note"] and "single-class" in agg["note"]  
+    assert np.isfinite(agg["auroc"]["value"])  
+    assert np.isnan(single["auroc"]["value"])  
 
 
 def test_metrics_json_regenerates_byte_stable(tmp_path):
@@ -84,7 +78,6 @@ def test_temperature_scaling_fits_on_val_only():
     rep = calibration_report(lg["val"]["logits"], lg["val"]["labels"],
                              lg["test"]["logits"], lg["test"]["labels"])
     assert rep["fit_on"] == "val_only"
-    # applying the fitted T must not degrade calibration on held-out test
     assert rep["ece_after"] <= rep["ece_before"] + 1e-6
 
 
@@ -92,4 +85,4 @@ def test_apply_temperature_softens_confidence():
     logits = np.array([4.0, -4.0, 2.0])
     hot = np.abs(apply_temperature(logits, 3.0) - 0.5)
     cold = np.abs(apply_temperature(logits, 1.0) - 0.5)
-    assert np.all(hot < cold)  # T>1 pulls probabilities toward 0.5
+    assert np.all(hot < cold)  

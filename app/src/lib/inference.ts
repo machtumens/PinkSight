@@ -1,45 +1,32 @@
-/*
-  Inference seam. The UI never imports a model — it talks to a local Python
-  sidecar (FastAPI on 127.0.0.1) that owns PyTorch/MONAI. In a packaged build,
-  Tauri spawns the sidecar as a bundled binary; in dev you run `npm run sidecar`.
-
-  Every field here is characterisation, never detection. See sidecar/main.py for
-  the enforced FORBIDDEN_TERMS guard.
-*/
-
 const SIDECAR = "http://127.0.0.1:8756";
 
 export type JobState = "queued" | "running" | "done" | "failed";
 
 export type ModalityContribution = {
   modality: "mri" | "clinical" | "path" | "genomic";
-  present: boolean;      // false => greyed slot (modality dropout / Track B future)
-  contribution: number;  // signed Shapley-style value; 0 when absent
+  present: boolean;
+  contribution: number;
 };
 
 export type SubtypeCharacterisation = {
   label: "Luminal A" | "Triple-Negative";
-  probability: number;        // calibrated
-  uncertainty: [number, number]; // 90% band
-  abstained: boolean;         // model declined below confidence floor
+  probability: number;
+  uncertainty: [number, number];
+  abstained: boolean;
 };
 
-// Non-reportable provenance stamp. `datasetTag` lets a reader always tell a real synthetic-harness
-// payload ("SYNTHETIC — NOT A RESULT") apart from a hardcoded MOCK UI fallback — never a bare number.
 export type Provenance = {
   datasetTag: string;
   manifestSha256?: string;
   seed?: number;
   gitCommit?: string;
   generatedAt?: string;
-  cohortStream?: string;   // "negative_control" | "positive_control" | "mock"
+  cohortStream?: string;
   nPatients?: number;
 };
 
-// Ki-67 stratum at diagnosis (aggressiveness snapshot) — characterisation companion only.
 export type Ki67Stratum = "high" | "low" | "not_assessed";
 
-// Explainable-fusion saliency summary (reported-not-gated on a random-init encoder).
 export type XaiBlock = {
   mapRef?: string;
   iou?: number | null;
@@ -48,7 +35,6 @@ export type XaiBlock = {
   note?: string;
 };
 
-// Control-sentinel verdict — evidence the pipeline wiring is not silently dead (synthetic plumbing).
 export type ControlVerdict = {
   stream?: string;
   auroc?: number;
@@ -56,13 +42,10 @@ export type ControlVerdict = {
   shuffleAuroc?: number;
   shuffleAtChance?: boolean;
   expected?: string;
-  verdict?: string;   // "PASS" | "FAIL" | "NOT_ASSESSED"
+  verdict?: string;
   note?: string;
 };
 
-// Dispatcher routing decision — a pure (cohort, modalities) -> harness lookup from
-// scripts/pinksight_dispatch.py. A routing decision ONLY, never a per-organ prediction number.
-// `crossCohortGradient` is always false (inference-time routing, no >1-cohort gradient).
 export type DispatchBlock = {
   cohort: string;
   modalities: string[];
@@ -75,19 +58,18 @@ export type DispatchBlock = {
 export type CharacterisationReport = {
   studyId: string;
   subtype: SubtypeCharacterisation;
-  ki67Descriptor: string;     // descriptive companion, NOT a growth-rate claim
-  ki67Stratum?: Ki67Stratum;  // optional at-diagnosis stratum companion to the descriptor
+  ki67Descriptor: string;
+  ki67Stratum?: Ki67Stratum;
   nottinghamGrade: { label: "NHG1" | "NHG2" | "NHG3"; probability: number; uncertainty: [number, number] };
   calibration: { ece: number; band: "good" | "acceptable" | "poor" };
   modalities: ModalityContribution[];
-  provenance?: Provenance;          // optional provenance stamp (present on synthetic-harness payloads)
-  xai?: XaiBlock;                   // optional explainable-fusion saliency summary
-  controlVerdict?: ControlVerdict;  // optional control-sentinel verdict (synthetic plumbing runs)
-  dispatch?: DispatchBlock;         // optional routing decision (present when cohort+modalities sent)
+  provenance?: Provenance;
+  xai?: XaiBlock;
+  controlVerdict?: ControlVerdict;
+  dispatch?: DispatchBlock;
   audit: { modelHash: string; seed: number; split: string; generatedAt: string };
 };
 
-/** Fallback so the workstation is demoable with the sidecar offline. */
 export const MOCK_REPORT: CharacterisationReport = {
   studyId: "DUKE-0421",
   subtype: {
@@ -106,8 +88,6 @@ export const MOCK_REPORT: CharacterisationReport = {
     { modality: "path", present: false, contribution: 0 },
     { modality: "genomic", present: false, contribution: 0 },
   ],
-  // Distinct MOCK tag (NOT the harness's "SYNTHETIC — NOT A RESULT") so a reader can always tell a
-  // hardcoded UI fallback apart from a real synthetic-harness payload.
   provenance: {
     datasetTag: "MOCK — NOT SYNTHETIC, NOT A RESULT",
     seed: 42,
@@ -140,14 +120,6 @@ export type InferenceResult =
   | { state: "done"; report: CharacterisationReport }
   | { state: "failed"; error: string };
 
-/**
- * Run inference against the sidecar. Falls back to MOCK_REPORT when the sidecar
- * is unreachable so the UI still demos — but flags it as mocked in the audit.
- *
- * `opts` is optional and backward compatible: when omitted, the POST body is byte-identical to the
- * original `{ studyId }`. Only defined optional fields are spread onto the body. `live` narrows the
- * server-side `PINKSIGHT_SIDECAR_LIVE` gate (it can never widen it — see sidecar/main.py).
- */
 export async function runInference(
   studyId: string,
   opts?: { live?: boolean; cohort?: string; modalities?: string[] }
@@ -168,18 +140,10 @@ export async function runInference(
     const report = (await res.json()) as CharacterisationReport;
     return { state: "done", report };
   } catch {
-    // Sidecar offline: degrade to mock, but never silently — audit says "mocked".
     return { state: "done", report: { ...MOCK_REPORT, studyId } };
   }
 }
 
-/**
- * Fetch the dispatcher's routing decision for a (cohort, modalities) selection. This is a routing
- * decision ONLY — never a per-organ prediction number. There is deliberately NO mock fallback: a
- * fabricated WIRED/NOT-WIRED verdict while offline would violate the dispatcher's "never silently
- * guessed" contract, so an unreachable sidecar surfaces `{ state: "failed" }` and the picker renders
- * that honestly instead.
- */
 export async function fetchDispatch(
   cohort: string,
   modalities: string[]

@@ -1,31 +1,3 @@
-#!/usr/bin/env python3
-"""Track-C DeLong CIs — reproduce the 3 companion-panel point AUROCs + ADD canonical DeLong CIs.
-
-Plan item 8 (model-integrity-remediation_12-08-26). The Track-C tabular ENSEMBLE companion panel
-(Coimbra / BCSC / METABRIC per ADR-0010, Scope C) reported three point AUROCs in Table2 whose per-sample
-OOF arrays were not on disk in a tracked location. This script:
-  1. reads the seed-42 OUT-OF-FOLD predictions the panel demos produce (explore/tabular_risk/results/
-     *_oof_probs.csv -- the demos are seed-fixed: random_state=42, StratifiedKFold shuffle -> re-running
-     reproduces them bit-for-bit; Coimbra + METABRIC were re-run this session to confirm);
-  2. verifies each point AUROC reproduces the Table2 value within +/-0.005;
-  3. ADDS a 95% CI to each number using the canonical repo estimator:
-       - Coimbra (N=116) + METABRIC (N=1917): patient-level FAST DeLong (pinksight.metrics.delong_ci);
-       - BCSC: fast-DeLong is UNDEFINED for count-weighted aggregate data (2.39M women in 280660 strata
-         rows), so the DeLong-slot is a STRATA (cluster) bootstrap (resample strata rows carrying `count`
-         weights) -- the correct resampling unit, matching the method already documented in
-         bcsc_metrics.json. Labelled as such, not passed off as a patient-level DeLong.
-  4. persists durable tracked artifacts under reports/trackc/ (3 OOF npz + trackc_cis.json).
-
-ADR-0010 FRAMING GUARD (verbatim in spirit): Track C is an ENSEMBLE companion panel (four cohorts share
-ZERO patients) -- NOT cross-attention fusion, NEVER fused into the Duke imaging encoder. Reported as
-independent per-cohort public benchmarks. What stays FORBIDDEN on ALL tracks: kinetics/doubling-time,
-clinical-trial-grade FP/FN reduction, cross-institution generalisation/transfer (LOCK-1). This script
-computes calibration/robustness CIs only; it makes NO cross-cohort number and moves NO LOCK.
-
-$0-local, CPU only (LOCK-5). Seeded (LAW L-3): BCSC strata bootstrap uses a fixed seed.
-
-Run:  uv run python scripts/track_c_delong_cis.py
-"""
 from __future__ import annotations
 
 import json
@@ -38,7 +10,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from pinksight.metrics import delong_ci  # noqa: E402  (canonical fast-DeLong Sun & Xu 2014)
+from pinksight.metrics import delong_ci  
 
 SANDBOX_RESULTS = ROOT / "explore" / "tabular_risk" / "results"
 OUT_DIR = ROOT / "reports" / "trackc"
@@ -46,10 +18,8 @@ RESULTS_JSON = OUT_DIR / "trackc_cis.json"
 
 _REPRO_TOL = 0.005
 _BOOTSTRAP_N = 1000
-_BOOTSTRAP_SEED = 42  # LAW L-3 — deterministic strata bootstrap
+_BOOTSTRAP_SEED = 42  
 
-# Each cohort: OOF CSV, the probability column, the (optional) frequency-weight column, the Table2
-# point AUROC + CI to reproduce, and the CI estimator to use.
 COHORTS = {
     "coimbra": {
         "csv": "coimbra_oof_probs.csv",
@@ -85,7 +55,6 @@ COHORTS = {
 
 
 def _weighted_auroc(y: np.ndarray, score: np.ndarray, weight: np.ndarray | None) -> float:
-    """AUROC, optionally frequency-weighted (weighted Mann-Whitney via sklearn sample_weight)."""
     from sklearn.metrics import roc_auc_score
 
     if weight is None:
@@ -96,13 +65,6 @@ def _weighted_auroc(y: np.ndarray, score: np.ndarray, weight: np.ndarray | None)
 def _strata_cluster_bootstrap_ci(
     y: np.ndarray, score: np.ndarray, weight: np.ndarray, n_boot: int = _BOOTSTRAP_N, seed: int = _BOOTSTRAP_SEED
 ) -> tuple[float, float, int]:
-    """95% percentile CI for a count-weighted AUROC via a STRATA (cluster) bootstrap.
-
-    Resample the strata rows with replacement (each row carries its `count` weight), recompute the
-    count-weighted AUROC, take the 2.5/97.5 percentiles. This is the correct resampling unit for
-    aggregated risk-stratum data (fast-DeLong's structural-component variance assumes independent
-    patient-level predictions, which count-weighted strata are not). Single-class resamples are redrawn.
-    """
     rng = np.random.default_rng(seed)
     n = len(y)
     boots = []
@@ -112,7 +74,6 @@ def _strata_cluster_bootstrap_ci(
         tries += 1
         idx = rng.integers(0, n, size=n)
         yb, sb, wb = y[idx], score[idx], weight[idx]
-        # need both classes present (weighted) for a defined AUROC
         if wb[yb == 1].sum() <= 0 or wb[yb == 0].sum() <= 0:
             continue
         boots.append(_weighted_auroc(yb, sb, wb))
@@ -136,7 +97,7 @@ def _process(name: str, spec: dict) -> dict:
     reproduces = abs(point_auroc - spec["table_auroc"]) <= _REPRO_TOL
 
     if spec["ci_method"] == "fast_delong":
-        auc_dl, lo, hi = delong_ci(y, score)  # unweighted patient-level fast-DeLong
+        auc_dl, lo, hi = delong_ci(y, score)  
         ci = [round(lo, 4), round(hi, 4)]
         ci_note = "patient-level fast-DeLong (Sun & Xu 2014, pinksight.metrics.delong_ci)"
         n_boot = None
@@ -147,10 +108,9 @@ def _process(name: str, spec: dict) -> dict:
             f"strata cluster bootstrap (n={n_boot}, seed={_BOOTSTRAP_SEED}) — fast-DeLong is UNDEFINED "
             "for count-weighted aggregate data; this is the correct DeLong-slot resampling unit"
         )
-    else:  # pragma: no cover
+    else:  
         raise ValueError(f"unknown ci_method {spec['ci_method']!r}")
 
-    # durable tracked OOF npz (closes the 'OOF not on disk' gap in a git-tracked location)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     npz_path = OUT_DIR / f"{name}_oof.npz"
     save_kwargs = {"y": y, "oof": score}
@@ -206,14 +166,14 @@ def run() -> dict:
 
 def main() -> int:
     out = run()
-    print(json.dumps(out, indent=2))  # noqa: T201
-    print("\n[trackc-cis] reproduction + DeLong CIs:")  # noqa: T201
+    print(json.dumps(out, indent=2))  
+    print("\n[trackc-cis] reproduction + DeLong CIs:")  
     for name, c in out["cohorts"].items():
-        print(  # noqa: T201
+        print(  
             f"  {name:9s} AUROC {c['point_auroc']} (table {c['table_auroc']}, "
             f"reproduce={c['reproduces_table_auroc_within_0.005']}) CI {c['ci95']} [{c['ci_method']}]"
         )
-    print(f"[trackc-cis] all_reproduce={out['all_reproduce_table_auroc']}; wrote {RESULTS_JSON.relative_to(ROOT)} + 3 OOF npz")  # noqa: T201
+    print(f"[trackc-cis] all_reproduce={out['all_reproduce_table_auroc']}; wrote {RESULTS_JSON.relative_to(ROOT)} + 3 OOF npz")  
     return 0
 
 

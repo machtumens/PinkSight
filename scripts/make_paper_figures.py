@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-"""Generate PinkSight paper / 50-page landscape-brief figures from FROZEN report JSONs.
-
-No new compute. Every figure traces to a named artifact (P12 rule: "no manual figures").
-Emits PNG (300 dpi, for the IMRaD paper) + SVG (vector, for the landscape brief) per figure,
-plus figures_manifest.json mapping each figure -> its source JSON(s) + a ledger-safe caption.
-
-Claim-ledger discipline baked in: every AUROC shows its DeLong CI; the 0.50 chance line is
-always drawn; the estimator is named; no forbidden framing. Track B is a SEPARATE figure and
-is NEVER placed on the same axes as the Duke cohort (ADR-0015 firewall).
-
-Run:  .venv/bin/python scripts/make_paper_figures.py
-"""
 from __future__ import annotations
 
 import json
@@ -19,22 +6,21 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
+import matplotlib.pyplot as plt  
+from matplotlib.lines import Line2D  
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "reports" / "paper" / "figures"
 OUT.mkdir(parents=True, exist_ok=True)
 
-# Palette encodes the story: one teal "signal" bar (clinical) above a field of slate nulls.
 C = {
-    "signal": "#0E7C7B",   # clinical-alone anchor — the sole significant Duke modality
-    "null": "#64748B",     # imaging / fusion rungs — the characterised ceiling
-    "floor": "#B45309",    # radiomics LOCK-4 floor
-    "chance": "#B91C1C",   # 0.50 chance line + shuffle sentinels
-    "histo": "#4338CA",    # Track B histology (distinct track)
-    "pilot": "#7C3AED",    # pCR pilot
-    "target": "#0F766E",   # gate-target reference lines
+    "signal": "#0E7C7B",   
+    "null": "#64748B",     
+    "floor": "#B45309",    
+    "chance": "#B91C1C",   
+    "histo": "#4338CA",    
+    "pilot": "#7C3AED",    
+    "target": "#0F766E",   
     "muted": "#94A3B8",
     "grid": "#E2E8F0",
     "ink": "#0F172A",
@@ -66,7 +52,7 @@ def style() -> None:
         "axes.titlecolor": C["ink"],
         "text.color": C["ink"],
         "axes.labelcolor": C["ink"],
-        "svg.fonttype": "none",  # keep text editable in the brief's vector editor
+        "svg.fonttype": "none",  
     })
 
 
@@ -90,10 +76,9 @@ def record(fid, title, files, sources, caption, **meta) -> None:
 
 
 def _forest(ax, rows, chance=0.5):
-    """rows: list of {label, auroc, ci, color, shuffle, note}. Horizontal forest plot."""
     n = len(rows)
     for y, r in enumerate(rows):
-        yy = n - 1 - y  # first row on top
+        yy = n - 1 - y  
         ci = r.get("ci")
         if ci:
             ax.plot(ci, [yy, yy], color=r["color"], lw=2.4, alpha=0.85, solid_capstyle="round", zorder=3)
@@ -116,14 +101,12 @@ def _forest(ax, rows, chance=0.5):
     ax.grid(axis="y", visible=False)
 
 
-# ---------------------------------------------------------------- Fig 3 (headline)
 def fig3_ablation() -> None:
     src = "reports/G3_fusion_arch_bundle/ablation_table.json"
     d = load(src)["rungs"]
     g5 = load("reports/G5_external/metrics.json")
-    clin_ci = g5["internal_auroc_h6_anchor_ci95"]  # [0.642, 0.747], same H6 basis
+    clin_ci = g5["internal_auroc_h6_anchor_ci95"]  
     moe7 = load("reports/G3_fusion_arch_bundle/moe7_corrected_reporting.json")["salt_distribution_auroc_3seed_mean"]
-    # clinical (ceiling) at top, imaging/fusion rungs descending below it
     rows = [
         {"label": "Clinical-alone (LogReg)", "auroc": d["clinical_alone"]["auroc_mean"],
          "ci": clin_ci, "color": C["signal"], "shuffle": d["clinical_alone"]["shuffle_auroc"]},
@@ -174,7 +157,6 @@ def fig3_ablation() -> None:
            n=613, seeds=3)
 
 
-# ---------------------------------------------------------------- Fig 5 reliability
 def fig5_reliability() -> None:
     src = "reports/G5_calibration/metrics.json"
     d = load(src)
@@ -214,7 +196,6 @@ def fig5_reliability() -> None:
            temperature=d["temperature"])
 
 
-# ---------------------------------------------------------------- Fig 6 external
 def fig6_external() -> None:
     src = "reports/G5_external/metrics.json"
     d = load(src)
@@ -253,7 +234,6 @@ def fig6_external() -> None:
            n_external=d["n_ispy2"]["n_ispy2_balanced"])
 
 
-# ---------------------------------------------------------------- Fig 7 XAI
 def fig7_xai() -> None:
     src = "reports/G5_xai/metrics.json"
     d = load(src)
@@ -298,12 +278,7 @@ def fig7_xai() -> None:
            "expected corroboration of the Duke imaging→subtype ceiling.", n=d["n_scored"], seeds=len(seeds))
 
 
-# ---------------------------------------------------------------- Fig 8 Track B (firewalled)
 def fig8_trackb() -> None:
-    # ADR-0012 RATIFIED (2026-08-12): the UNI2-h/ABMIL 0.9675 confirmation bar is now
-    # logged (decisions.md + Table 2) and shown alongside arm-3 (TITAN). Firewall
-    # (ADR-0012/ADR-0015): same 640-patient cohort, DIFFERENT encoder -> encoder-robustness,
-    # NOT independent corroboration; never juxtaposed with any Duke number.
     s_arm3 = "reports/novel_heads/arm3_histology_morphology/metrics_20260728.json"
     a = load(s_arm3)["floor_gate"]
     mil = load("reports/trackb/mil_cv_uni.json")
@@ -334,7 +309,6 @@ def fig8_trackb() -> None:
            n=a["n"], seeds=a["seeds"])
 
 
-# ---------------------------------------------------------------- Fig pCR pilot
 def fig_pcr() -> None:
     s_floor = "reports/pcr_pilot/metrics_floor.json"
     s_cnn = "reports/pcr_pilot/metrics_cnn.json"
@@ -366,7 +340,6 @@ def fig_pcr() -> None:
            n=f["n"])
 
 
-# ---------------------------------------------------------------- Fig 2 CONSORT / waterfall
 def fig2_consort() -> None:
     from matplotlib.patches import FancyBboxPatch
     src = "DATA_CARD.md"

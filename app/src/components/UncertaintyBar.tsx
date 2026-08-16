@@ -1,11 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 
-/*
-  The trust primitive. A model output NEVER appears as a lone number — it appears
-  as a calibrated point sitting inside its uncertainty band. If the model abstained,
-  we say so instead of guessing. This is "a trustworthy 0.80 beats a leaky 0.92"
-  rendered in pixels.
-*/
 export function UncertaintyBar({
   label,
   probability,
@@ -40,7 +34,6 @@ export function UncertaintyBar({
           </span>
         </span>
       </div>
-      {/* band track */}
       <div className="relative h-2 w-full rounded-full bg-muted">
         <div
           className="absolute h-2 rounded-full bg-uncertain/40"

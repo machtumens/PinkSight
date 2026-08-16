@@ -7,14 +7,7 @@ const MOD_COLOR: Record<string, string> = {
   genomic: "bg-mod-genomic",
 };
 
-/*
-  Cross-attention fusion, made legible. Each modality's SIGNED Shapley-style contribution is a bar
-  growing right (positive) or left (negative) from a centre baseline. Absent streams (modality
-  dropout / Track B) are greyed and contribute nothing — shown honestly, never hidden. The product's
-  thesis is "explainable fusion"; this is the pixels that make it explainable.
-*/
 export function ModalityBars({ modalities }: { modalities: ModalityContribution[] }) {
-  // scale against the largest present |contribution| (floor 0.05 so tiny values still read)
   const max = Math.max(
     0.05,
     ...modalities.filter((m) => m.present).map((m) => Math.abs(m.contribution)),

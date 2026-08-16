@@ -1,45 +1,12 @@
-#!/usr/bin/env python3
-"""PinkSight real-data reproduce path (`make reproduce`) — precondition-check + honest scope.
-
-This repository ships **no patient data and no trained weights**. `make reproduce` reproduces the
-**real-data** rungs of `results/Table2_results.md` — but ONLY the ones whose producing code is
-actually in this repo, against data YOU have placed per `data/README.md`'s documented layout under
-that cohort's own data-use agreement.
-
-SCOPE (honest — read `docs/CLAIM_LEDGER.md` and the firewall in `data/README.md` first):
-
-  IN  (code-reproducible here, per-cohort, patient-disjoint, never pooled or compared):
-      * G3  — Track-A Duke hierarchical fusion + biology-gated MoE + paired-DeLong-vs-clinical
-      * G5  — calibration / quasi-external eval / XAI-subtype
-      * Track-C — standalone tabular ensemble panel (ADR-0010 path-scoped carve-out)
-      * dispatch — the per-cohort organs routed by scripts/pinksight_dispatch.py
-
-  OUT (ship FROZEN-ONLY in results/Table2_results.md — NOT code-reproducible in this repo):
-      * G1 radiomics floor · G2 imaging-closing arm · pCR Phase D/E
-      (Phase-1 A1 ratification: these rows are frozen numbers, their producing scripts are not ported.)
-
-This target NEVER silently falls back to synthetic data and presents it as reproduction. If a
-required file for a rung is absent it FAILS LOUDLY, naming the exact missing path and pointing at
-`data/README.md`. Numbers are compared against the frozen `results/Table2_results.md` values using
-each producing script's own documented reproducibility contract (e.g. g3_moe7_salt_reporting.py's
-20-salt md5-deterministic sweep) — reproduce prints, it does not silently overwrite frozen results.
-
-Usage:
-    python3 scripts/run_reproduce.py
-"""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # scripts/ -> repo root
+ROOT = Path(__file__).resolve().parents[1]  
 DATA_README = "data/README.md"
 
-# In-scope rungs -> the exact on-disk inputs data/README.md documents as required, plus the
-# producing scripts (dispatch-routed + §2b headline). Paths are repo-root-relative, verbatim from
-# data/README.md's "Expected on-disk layout" block. A rung is reproducible only if ALL its inputs
-# exist; a missing input fails loudly rather than degrading to synthetic.
 RUNGS: list[dict] = [
     {
         "name": "G3 — Track-A Duke hierarchical fusion + MoE",
@@ -133,7 +100,6 @@ def main() -> int:
         print("=" * 78)
         return 2
 
-    # Data present (never the case in a fresh clone; exercised only in a data-provisioned env).
     print("\nAll documented inputs present. Reproduce would now invoke, per rung:")
     for rung in RUNGS:
         print(f"\n  {rung['name']}")

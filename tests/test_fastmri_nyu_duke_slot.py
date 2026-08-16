@@ -1,11 +1,3 @@
-"""ADR-0016 frozen-slot — the ONE runnable check that FAILS if the gate logic or the frozen-only
-invariant (or the reporting firewall) silently breaks.
-
-This is deliberately GPU-free and data-free: it exercises pinksight.eval.nyu_duke_slot, the module that
-holds the load-bearing invariants the heavy extract/ablation scripts import. If any of these regress,
-the ±0.005 outcome-gate could pass a cross-institution finding as a null, an unfrozen NYU encoder could
-take a Duke gradient, or an NYU number could be juxtaposed with a Duke number — all ADR-0016 violations.
-"""
 
 from __future__ import annotations
 
@@ -49,15 +41,15 @@ def test_gate_halt_reason_forbids_reporting():
 def test_frozen_invariant_fires_on_thawed_and_training():
     torch = pytest.importorskip("torch")
     m = torch.nn.Linear(4, 2)
-    for p in m.parameters():          # thawed -> must raise
+    for p in m.parameters():          
         p.requires_grad_(True)
     with pytest.raises(AssertionError):
         assert_frozen(m)
-    for p in m.parameters():          # frozen + eval -> passes
+    for p in m.parameters():          
         p.requires_grad_(False)
     m.eval()
     assert_frozen(m)
-    m.train()                          # training mode -> must raise even when params frozen
+    m.train()                          
     with pytest.raises(AssertionError):
         assert_frozen(m)
 
@@ -65,7 +57,7 @@ def test_frozen_invariant_fires_on_thawed_and_training():
 def test_frozen_invariant_rejects_empty_module():
     torch = pytest.importorskip("torch")
     with pytest.raises(AssertionError):
-        assert_frozen(torch.nn.Identity())  # no parameters — not a real encoder
+        assert_frozen(torch.nn.Identity())  
 
 
 def test_firewall_blocks_nyu_number_in_duke_block():

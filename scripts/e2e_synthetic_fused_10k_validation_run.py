@@ -1,26 +1,3 @@
-#!/usr/bin/env python3
-"""E2E synthetic validation kit — Deliverable A: the fused Track-A model at n=10,000 per control stream.
-
-Forward-only, $0-local, CPU, no training-on-synthetic. Runs the REAL Track-A fusion stack
-(``FusionModel`` via ``e2e_synthetic_harness_run.run_stream``, ``realistic=True`` — Duke-like clinical
-marginals, SYN-A-* IDs) forward-only over an n=10,000 synthetic MRI+clinical cohort, for BOTH the
-negative and positive control stream, and writes per stream: a per-sample JSONL (one row per
-forward-passed patient + a self-describing header row), the existing single-representative
-``CharacterisationReport``, and a standalone control scorecard. Both streams' generation manifests are
-written to one cohort-manifest file.
-
-This is PLUMBING / THROUGHPUT / INTEGRITY-CONTROL proof ONLY: no metric off synthetic data is a
-scientific result, no LOCK is moved. Characterisation / at-diagnosis / stratification framing only. The
-pipeline is IMPORTED and called FROZEN/forward-only (DD-2 single-source-of-truth) — this kit adds no
-model or dataset-generation code.
-
-Per-sample honesty (D2/D3, restated in every JSONL header): the ``nottinghamGrade*`` columns are the
-EXISTING constant honest placeholder (NO trained grade head — Head-2 grade was DROPPED at G2), and
-``ki67Stratum`` is the constant ``"not_assessed"`` (no calibrated @14% threshold — G0 Ki-67 N=0);
-``ki67RawValue`` and ``subtypeProbability`` are the genuine per-patient forward-pass outputs.
-
-Usage: uv run --extra ml python scripts/e2e_synthetic_fused_10k_validation_run.py --n-patients 10000
-"""
 
 from __future__ import annotations
 
@@ -33,11 +10,11 @@ from typing import Any, Iterator
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))  # so `import e2e_synthetic_harness_run` + `fva.*` resolve
+sys.path.insert(0, str(ROOT / "scripts"))  
 
-import e2e_synthetic_harness_run as harness  # noqa: E402
+import e2e_synthetic_harness_run as harness  
 
-from pinksight.eval.e2e_report_contract import (  # noqa: E402
+from pinksight.eval.e2e_report_contract import (  
     SYNTHETIC_TAG,
     assert_synthetic_provenance,
 )
@@ -45,8 +22,6 @@ from pinksight.eval.e2e_report_contract import (  # noqa: E402
 ORGAN = "fused-track-a-realistic"
 DEFAULT_OUT = ROOT / "process/general-plans/active/fused-10k-validation-kit_08-08-26"
 
-# Self-describing header note (D2/D3): makes the JSONL honest even if extracted out of context — nobody
-# downstream mistakes a constant placeholder column for a real per-patient head signal.
 _JSONL_NOTE = (
     "D2: nottinghamGrade* is the EXISTING constant honest placeholder (label NHG1, probability 0.5) — "
     "there is NO trained Nottingham-grade head (Head-2 grade was DROPPED at G2); this column is constant "
@@ -59,9 +34,6 @@ _JSONL_NOTE = (
 
 
 def _per_sample_rows(res: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    """One JSON-serialisable row per forward-passed patient (Public Contract #3). ``subtypeProbability``
-    and ``ki67RawValue`` are the genuine per-patient forward-pass outputs; the grade + ki67 stratum
-    fields are the documented constant honest placeholders."""
     pids = res["patient_ids"]
     probs = np.asarray(res["per_patient_subtype_prob"], dtype=float)
     ki67 = np.asarray(res["per_patient_ki67_raw"], dtype=float)
@@ -79,8 +51,6 @@ def _per_sample_rows(res: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 
 def _write_jsonl(path: Path, res: dict[str, Any], stream_name: str) -> int:
-    """Write the per-sample JSONL: a self-describing header row (D2/D3 note + manifest hash) followed by
-    one data row per forward-passed patient. Returns the number of DATA rows written."""
     n = len(res["patient_ids"])
     header = {
         "_manifest": True,
@@ -110,8 +80,6 @@ def _consort_line(stream_name: str, res: dict[str, Any]) -> str:
 
 
 def run(args: argparse.Namespace) -> int:
-    """Run both control streams of the fused Track-A model at ``args.n_patients`` and write the 3
-    per-stream artifacts + the cohort manifest. Provenance-gated before every write."""
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     git_commit = harness.git_commit_short()
@@ -123,7 +91,6 @@ def run(args: argparse.Namespace) -> int:
             channels=args.channels, effect_size=args.effect_size, xai_subsample=args.xai_subsample,
             batch_size=args.batch_size, out_dir=out_dir, git_commit=git_commit, realistic=True,
         )
-        # Gate before write (firewall #2): the report's datasetTag + manifest hash must match.
         assert_synthetic_provenance(res["report"], res["manifest"]["manifest_sha256"])
 
         report_path = out_dir / f"e2e_synthetic_fused_10k_{stream_name}_report.json"
@@ -136,13 +103,13 @@ def run(args: argparse.Namespace) -> int:
         scorecard_path.write_text(json.dumps(res["control_verdict"], indent=2), encoding="utf-8")
 
         manifests[stream_name] = res["manifest"]
-        print(_consort_line(stream_name, res))  # noqa: T201
-        print(f"  wrote {report_path.name}, {jsonl_path.name} ({n_rows} data rows), "  # noqa: T201
+        print(_consort_line(stream_name, res))  
+        print(f"  wrote {report_path.name}, {jsonl_path.name} ({n_rows} data rows), "  
               f"{scorecard_path.name}")
 
     manifest_path = out_dir / "e2e_synthetic_fused_10k_cohort_manifest.json"
     manifest_path.write_text(json.dumps(manifests, indent=2), encoding="utf-8")
-    print(f"  wrote {manifest_path.name} — run-of-streams generation manifests "  # noqa: T201
+    print(f"  wrote {manifest_path.name} — run-of-streams generation manifests "  
           "(SYNTHETIC — NOT A RESULT; forward-only plumbing, no LOCK moved)")
     return 0
 

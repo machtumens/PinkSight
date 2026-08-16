@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 
-// Study-centric: the unit of work is a study, opened into the viewer. Mocked cohort.
 const STUDIES = [
   { id: "DUKE-0421", patient: "P-0421", scanner: "GE 1.5T", year: 2019, series: "DCE 6-phase", status: "ready" },
   { id: "DUKE-0588", patient: "P-0588", scanner: "Siemens 3T", year: 2021, series: "DCE 5-phase", status: "ready" },

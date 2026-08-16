@@ -1,24 +1,3 @@
-"""G3 item-4 — minimum detectable effect (MDE) / post-hoc power for the pre-reg ΔAUC ≥ 0.03 margin.
-
-Question: at N=613, given the OBSERVED paired-DeLong standard error of ΔAUC(fusion vs clinical), what
-is the smallest true ΔAUC detectable at 80%/90% power (α=0.05 two-sided)? If that MDE exceeds the
-pre-registered +0.03 margin, the study is underpowered to DETECT a genuine small fusion benefit — the
-honest evidence behind "fusion not demonstrated" (never "fusion rejected").
-
-Primary variance = the paired-DeLong SE from item-3 (`paired_vs_anchor_delong.json`), the principled
-estimate for detecting a ΔAUC between two correlated ROCs on the SAME patients. Secondary sensitivity
-= the across-seed AUROC spread (`multiseed_spread.json`).
-
-MDE = SE_paired * (z_{1-α/2} + z_power).  N_required ≈ N * (SE_obs / SE_needed)^2, SE_needed = margin
-/ (z_{1-α/2} + z_power)  (SE ∝ 1/√N at fixed effect structure).
-
-Reads only frozen JSON (no imaging-encoder re-run, no model fit). Claim-ledger: characterisation at
-diagnosis; the observed ΔAUC is negative (clinical beats fusion) — this power calc quantifies that a
-small POSITIVE +0.03 imaging benefit would be undetectable here, it does NOT assert one exists. No
-LOCK moved.
-
-    PYTHONPATH=src .venv/bin/python scripts/g3_power_analysis.py
-"""
 from __future__ import annotations
 
 import json
@@ -29,16 +8,14 @@ PAIRED = ROOT / "reports/G3_fusion_arch_bundle/paired_vs_anchor_delong.json"
 SPREAD = ROOT / "reports/G3_fusion_arch_bundle/multiseed_spread.json"
 OUT = ROOT / "reports/G3_fusion_arch_bundle/mde_power.json"
 
-# Standard normal quantiles (scipy-free, matching src/pinksight/metrics._Z95 convention).
-Z_ALPHA_2 = 1.959963985   # norm.ppf(0.975), α=0.05 two-sided
-Z_POWER_80 = 0.841621234  # norm.ppf(0.80)
-Z_POWER_90 = 1.281551566  # norm.ppf(0.90)
+Z_ALPHA_2 = 1.959963985   
+Z_POWER_80 = 0.841621234  
+Z_POWER_90 = 1.281551566  
 PREREG_MARGIN = 0.03
 N = 613
 
 
 def _paired_se_per_seed(block: dict) -> dict[str, float]:
-    """Recover the paired ΔAUC SE per seed from its 95% CI: se = (ci_hi - delta) / z_{0.975}."""
     out = {}
     for s, d in block["per_seed"].items():
         se = (d["ci95"][1] - d["delta"]) / Z_ALPHA_2

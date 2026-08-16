@@ -1,9 +1,3 @@
-"""Build the jury submission notebooks.
-
-Reads each self-contained organ script, strips every `#` comment, wraps the code
-in a clean notebook with one plain-language intro cell, and writes it to this
-folder. Stdlib only. Re-run with: python3 submission/_build_submission.py
-"""
 import io
 import json
 import re
@@ -19,7 +13,6 @@ NOT_CLAIM = (
     "It uses no real patient data and never compares one group against another."
 )
 
-# organ -> (nice title, one-line "what it shows", extra note)
 ORGANS = {
     "scripts/e2e_synthetic_harness_run.py": (
         "Track-A control check (MRI-style)",
@@ -85,7 +78,6 @@ ORGANS = {
 
 
 def strip_comments(source: str) -> str:
-    """Remove every `#` comment, keep code and layout. Falls back to raw source."""
     try:
         out = []
         last_line, last_col = 1, 0
@@ -101,18 +93,16 @@ def strip_comments(source: str) -> str:
         text = "".join(out)
     except (tokenize.TokenError, IndentationError):
         text = source
-    text = re.sub(r"\n{3,}", "\n\n", text)  # collapse noise
+    text = re.sub(r"\n{3,}", "\n\n", text)  
     return text.strip("\n") + "\n"
 
 
 def as_source(text: str) -> list[str]:
-    """nbformat wants a list of lines, each keeping its newline."""
     lines = text.splitlines(keepends=True)
     return lines or [""]
 
 
 def split_cells(code: str) -> list[str]:
-    """Split into a setup cell plus one cell per top-level def/class block."""
     boundary = re.compile(r"^(def |class |@|if __name__)")
     cells, cur = [], []
     for line in code.splitlines(keepends=True):
